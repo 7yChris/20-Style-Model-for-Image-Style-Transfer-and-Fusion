@@ -11,9 +11,12 @@ parser.add_argument("--C_NUMS", type=int, default=10)     #参数：图片数量
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")    #参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")    #参数：结果存储路径
 parser.add_argument("--PATH_IMG", type=str, default="./imgs/5.jpg")      #参数：选择测试图像
-parser.add_argument("--LABEL_1", type=int, default=9)                    #参数：风格1
+parser.add_argument("--LABEL_1", type=int, default=2)                    #参数：风格1
 parser.add_argument("--LABEL_2", type=int, default=4)                    #参数：风格2
-parser.add_argument("--ALPHA", type=float, default=0.5)                  #参数：Alpah，风格权重，默认为0.5
+parser.add_argument("--LABEL_3", type=int, default=6)                    #参数：风格3
+parser.add_argument("--LABEL_4", type=int, default=8)                    #参数：风格4
+parser.add_argument("--ALPHA1", type=float, default=0.5)                  #参数：Alpah1，风格权重，默认为0.5
+parser.add_argument("--ALPHA2", type=float, default=0.5)                  #参数：Alpah2，风格权重，默认为0.5
 args = parser.parse_args()                                               #定义参数集合args
 
 
@@ -21,8 +24,11 @@ def Init(c_nums=10, model_path=args.PATH_MODEL):                         #初始
     content = tf.placeholder(tf.float32, [1, None, None, 3])             #图片输入定义
     y1 = tf.placeholder(tf.float32, [1, c_nums])                         #初始化风格1选择范围
     y2 = tf.placeholder(tf.float32, [1, c_nums])                         #初始化风格2选择范围
-    alpha = tf.placeholder(tf.float32)                                   #风格与内容的权重比
-    target = forward(content, y1, y2, alpha)                             #定义将要生成的图片
+    y3 = tf.placeholder(tf.float32, [1, c_nums])
+    y4 = tf.placeholder(tf.float32, [1, c_nums])
+    alpha1 = tf.placeholder(tf.float32)
+    alpha2 = tf.placeholder(tf.float32)                                  #风格与内容的权重比
+    target = forward(content, y1, y2, y3, y4, alpha1, alpha2, False)     #定义将要生成的图片
     sess = tf.Session()                                                  #定义一个sess
     sess.run(tf.global_variables_initializer())                          #模型初始化
     saver = tf.train.Saver()                                             #模型存储器定义
@@ -30,28 +36,38 @@ def Init(c_nums=10, model_path=args.PATH_MODEL):                         #初始
     if ckpt and ckpt.model_checkpoint_path:                              #从检查点中恢复模型
         saver.restore(sess, ckpt.model_checkpoint_path)                  #从检查点的路径名中分离出训练轮数
         global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]   #获取训练步数
-    return target, sess, content, y1, y2, alpha                          #返回目标图片，模型session，输入图片，风格选择，风格权重
+    return target, sess, content, y1, y2, y3, y4, alpha1, alpha2,                #返回目标图片，模型session，输入图片，风格选择，风格权重
 
 
-def stylize(img_path, result_path, label1, label2, alpha, target, sess, content_ph, y1_ph, y2_ph, alpha_ph): # 风格迁移
+def stylize(img_path, result_path, label1, label2, label3, label4, alpha1, alpha2, target, sess, content_ph, y1_ph, y2_ph, y3_ph, y4_ph, alpha1_ph, alpha2_ph): # 风格迁移
+    print(alpha1,alpha2)
     img = np.array(Image.open(img_path))               #将输入图片序列化
     Y1 = np.zeros([1, 10])                             #数组置0
     Y2 = np.zeros([1, 10])                             #数组置0
+    Y3 = np.zeros([1, 10])
+    Y4 = np.zeros([1, 10])
     Y1[0, label1] = 1                                  #第label1个风格置1
     Y2[0, label2] = 1                                  #第label2个风格置1
-    img = sess.run(target, feed_dict={content_ph: img[np.newaxis, :, :, :], y1_ph: Y1, y2_ph: Y2, alpha_ph: alpha})  #生成图片
-    Image.fromarray(np.uint8(img[0, :, :, :])).save(result_path + "result" + str(alpha) + ".jpg")                   #保存风格迁移后的图片
+    Y3[0, label3] = 1
+    Y4[0, label4] = 1
+    img = sess.run(target, feed_dict={content_ph: img[np.newaxis, :, :, :], y1_ph: Y1, y2_ph: Y2, y3_ph: Y3, y4_ph: Y4, alpha1_ph: alpha1, alpha2_ph: alpha2})  #生成图片
+    Image.fromarray(np.uint8(img[0, :, :, :])).save(result_path + 'result' + '_' + str(alpha1) + '_' + str(alpha2) + '.jpg')                   #保存风格迁移后的图片
+
 
 #测试程序
 def test():
-    target, sess, content, y1, y2, alpha = Init(args.C_NUMS, args.PATH_MODEL)          #初始化生成模型
-    for a in range(11):                                                                #将风格权重分成10份，计算10种风格不同的图片
-        args.ALPHA = a / 10
-        stylize(args.PATH_IMG, args.PATH_RESULTS, args.LABEL_1, args.LABEL_2, args.ALPHA, target, sess, content, y1, y2, alpha)
+    target, sess, content, y1, y2, y3, y4, alpha1, alpha2 = Init(args.C_NUMS, args.PATH_MODEL)          #初始化生成模型
+    for a in range(0, 11, 2):#将风格权重分成10份，计算10种风格不同的图片
+        for b in range(0, 11, 2):
+            args.ALPHA1 = a / 10.0 / 2.0
+            args.ALPHA2 = b / 10.0 / 2.0
+            stylize(args.PATH_IMG, args.PATH_RESULTS, args.LABEL_1, args.LABEL_2, args.LABEL_3, args.LABEL_4, args.ALPHA1, args.ALPHA2, target, sess, content, y1, y2, y3, y4, alpha1, alpha2)
+
 
 #主程序
 def main():
     test()
+
 
 #主程序入口
 if __name__ == '__main__':

@@ -44,15 +44,20 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
     content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
     # 风格图像：batch为2，图像大小为512*512*3
     style = tf.placeholder(tf.float32, [batch_size, STYLE_H, STYLE_W, IMG_C])
-    # 目标图像标签：1*10
+    # 风格1：喂入一种风格的标签
     y = tf.placeholder(tf.float32, [1, C_NUMS])
-    # 生成图像：1*10张
-    y_ = tf.zeros([1, C_NUMS])
+    # 风格2：0
+    y_1 = tf.zeros([1, C_NUMS])
+    # 风格3：0
+    y_2 = tf.zeros([1, C_NUMS])
+    # 风格4：0
+    y_3 = tf.zeros([1, C_NUMS])
     # alpha初始为1
-    alpha = tf.constant([1.])
+    alpha1 = tf.constant([1.])
+    alpha2 = tf.constant([1.])
 
     # 图像生成网络：前向传播
-    target = forward(content, y, y_, alpha)
+    target = forward(content, y, y_1, y_2, y_3, alpha1, alpha2, True)
     # 生成图像、内容图像、风格图像特征提取
     Phi_T = vggnet(target, vgg_path)
     Phi_C = vggnet(content, vgg_path)
@@ -115,7 +120,7 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
                 Image.fromarray(np.uint8(save_img)).save("save_imgs/"+str(itr) + "_" + str(np.argmax(y_labels[0, :]))+".jpg")
 
             #存储模型
-            if itr % 500 == 0:
+            if itr % 5 == 0:
                 saver.save(sess, model_path+"model", global_step=global_step)
                 print('Iteration: %d, Save Model Successfully' % step)
 
