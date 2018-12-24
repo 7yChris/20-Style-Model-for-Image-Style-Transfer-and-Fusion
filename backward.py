@@ -120,7 +120,7 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
                 Image.fromarray(np.uint8(save_img)).save("save_imgs/"+str(itr) + "_" + str(np.argmax(y_labels[0, :]))+".jpg")
 
             #存储模型
-            if itr % 5 == 0:
+            if itr % 100 == 0:
                 saver.save(sess, model_path+"model", global_step=global_step)
                 print('Iteration: %d, Save Model Successfully' % step)
 
