@@ -3,7 +3,7 @@ import tensorflow as tf
 
 #backward、forward需要用到的一些函数
 
-def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, alpha1=1, alpha2=1, istrain=True):
+def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, alpha1=1, alpha2=0, alpha3 = 0, istrain=True):
     mean, var = tf.nn.moments(x, axes=[1, 2], keep_dims=True)
     if y1==None:
         beta = tf.get_variable(name=scope_bn + 'beta', shape=[x.shape[-1]], initializer=tf.constant_initializer([0.]), trainable=True)  # label_nums x C
@@ -27,8 +27,8 @@ def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, a
             gamma3 = tf.matmul(y3, gamma)
             beta4 = tf.matmul(y4, beta)
             gamma4 = tf.matmul(y4, gamma)
-            beta = alpha1 * beta1 + (0.5 - alpha1) * beta2 + alpha2 * beta3 + (0.5 - alpha2) * beta4
-            gamma = alpha1 * gamma1 + (0.5 - alpha1) * gamma2 + alpha2 * gamma3 + (0.5 - alpha2) * gamma4
+            beta = alpha1 * beta1 + alpha2 * beta2 + alpha3 * beta3 + (1.0 - alpha1 - alpha2 - alpha3) * beta4
+            gamma = alpha1 * gamma1 + alpha2 * gamma2 + alpha3 * gamma3 + (1.0 - alpha1 - alpha2 - alpha3) * gamma4
     x = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-10)
     return x
 
@@ -40,9 +40,9 @@ def conv(name, inputs, k_size, nums_in, nums_out, strides):
     bias = tf.get_variable(name+"B", [nums_out], initializer=tf.constant_initializer(0.))
     return tf.nn.conv2d(inputs, kernel, [1, strides, strides, 1], "VALID") + bias
 
-def upsampling(name, inputs, nums_in, nums_out, y1, y2, alpha1, alpha2, istrain):
+def upsampling(name, inputs, nums_in, nums_out, y1, y2, alpha1, alpha2, alpha3, istrain):
     inputs = tf.image.resize_nearest_neighbor(inputs, [tf.shape(inputs)[1] * 2, tf.shape(inputs)[2] * 2])
-    return conditional_instance_norm(conv(name, inputs, 3, nums_in, nums_out, 1), "cin"+name, y1, y2, alpha1, alpha2,istrain)
+    return conditional_instance_norm(conv(name, inputs, 3, nums_in, nums_out, 1), "cin"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
 
 def relu(inputs):
     return tf.nn.relu(inputs)
@@ -50,11 +50,11 @@ def relu(inputs):
 def sigmoid(inputs):
     return tf.nn.sigmoid(inputs)
 
-def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, alpha1, alpha2, istrain):
+def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, alpha1, alpha2, alpha3, istrain):
     temp = inputs * 1.0
-    inputs = conditional_instance_norm(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1"+name, y1, y2, alpha1, alpha2, istrain)
+    inputs = conditional_instance_norm(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
     inputs = relu(inputs)
-    inputs = conditional_instance_norm(conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1), "cin2"+name, y1, y2, alpha1, alpha2, istrain)
+    inputs = conditional_instance_norm(conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1), "cin2"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
     return inputs + temp
 
 def content_loss(phi_content, phi_target):

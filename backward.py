@@ -8,6 +8,7 @@ from PIL import Image
 import numpy as np
 import scipy.misc as misc
 import argparse
+import time
 
 # 初始化各种参数
 parser = argparse.ArgumentParser()
@@ -28,7 +29,7 @@ parser.add_argument("--LEARNING_RATE", type=float, default=0.001)
 parser.add_argument("--CONTENT_WEIGHT", type=float, default=1.0)
 parser.add_argument("--STYLE_WEIGHT", type=float, default=5.0)
 # 训练内容图像路径，train2014
-parser.add_argument("--PATH_CONTENT", type=str, default="./MSCOCO/")
+parser.add_argument("--PATH_CONTENT", type=str, default=".MSCOCO")
 # 风格图像路径
 parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
 # 生成模型路径
@@ -55,9 +56,10 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
     # alpha初始为1
     alpha1 = tf.constant([1.])
     alpha2 = tf.constant([1.])
+    alpha3 = tf.constant([1.])
 
     # 图像生成网络：前向传播
-    target = forward(content, y, y_1, y_2, y_3, alpha1, alpha2, True)
+    target = forward(content, y, y_1, y_2, y_3, alpha1, alpha2, alpha3, True)
     # 生成图像、内容图像、风格图像特征提取
     Phi_T = vggnet(target, vgg_path)
     Phi_C = vggnet(content, vgg_path)
@@ -79,6 +81,8 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
     # 实例化saver对象，便于之后保存模型
     saver = tf.train.Saver()
 
+    time_start=time.time()
+
     with tf.Session() as sess:
         # 初始化全局变量
         init_op = tf.global_variables_initializer()
@@ -96,6 +100,7 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
         for itr in range(args.steps):
+            time_step_start = time.time()
             # 随机读取batch_size张内容图片，存储在四维矩阵中（batch_size*h*w*c）
             batch_content= random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
             # 随机选择1个风格图片，并范围含有batch_size张风格图片的存储矩阵，y_labels存储风格图片的标签
@@ -119,10 +124,12 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
                 # 打印3张图片
                 Image.fromarray(np.uint8(save_img)).save("save_imgs/"+str(itr) + "_" + str(np.argmax(y_labels[0, :]))+".jpg")
 
+            time_step_stop = time.time()
             #存储模型
-            if itr % 100 == 0:
+            a=5
+            if itr % a == 0:
                 saver.save(sess, model_path+"model", global_step=global_step)
-                print('Iteration: %d, Save Model Successfully' % step)
+                print('Iteration: %d, Save Model Successfully, single step time = %.2fs, total time = %.2fs' % (step, time_step_stop-time_step_start,time_step_stop-time_start))
 
         # 关闭多线程
         coord.request_stop()
