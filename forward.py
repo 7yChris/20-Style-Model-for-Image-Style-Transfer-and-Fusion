@@ -38,14 +38,14 @@ def forward(inputs, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
     inputs = relu(conditional_instance_norm(conv("conv2", inputs, 3, 32, 64, 2), "cin2", y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain))
     inputs = relu(conditional_instance_norm(conv("conv3", inputs, 3, 64, 128, 2), "cin3", y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain))
     # 仿照ResNet定义一些跳过连接
-    inputs = ResBlock("res1", inputs, 3, 128, 128, y1, y2, alpha1, alpha2, alpha3, istrain)
-    inputs = ResBlock("res2", inputs, 3, 128, 128, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = ResBlock("res3", inputs, 3, 128, 128, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = ResBlock("res4", inputs, 3, 128, 128, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = ResBlock("res5", inputs, 3, 128, 128, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = upsampling("up1", inputs, 128, 64, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = upsampling("up2", inputs, 64, 32, y1, y2, alpha1, alpha2, alpha3,istrain)
-    inputs = sigmoid(conditional_instance_norm(conv("last", inputs, 9, 32, 3, 1), "cinout", y1, y2, alpha1, alpha2, alpha3,istrain)) * 255
+    inputs = ResBlock("res1", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = ResBlock("res2", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = ResBlock("res3", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = ResBlock("res4", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = ResBlock("res5", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = upsampling("up1", inputs, 128, 64, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = upsampling("up2", inputs, 64, 32, y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)
+    inputs = sigmoid(conditional_instance_norm(conv("last", inputs, 9, 32, 3, 1), "cinout", y1, y2, y3, y4, alpha1, alpha2, alpha3,istrain)) * 255
     return inputs
 
 

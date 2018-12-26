@@ -40,9 +40,9 @@ def conv(name, inputs, k_size, nums_in, nums_out, strides):
     bias = tf.get_variable(name+"B", [nums_out], initializer=tf.constant_initializer(0.))
     return tf.nn.conv2d(inputs, kernel, [1, strides, strides, 1], "VALID") + bias
 
-def upsampling(name, inputs, nums_in, nums_out, y1, y2, alpha1, alpha2, alpha3, istrain):
+def upsampling(name, inputs, nums_in, nums_out, y1, y2, y3, y4,alpha1, alpha2, alpha3, istrain):
     inputs = tf.image.resize_nearest_neighbor(inputs, [tf.shape(inputs)[1] * 2, tf.shape(inputs)[2] * 2])
-    return conditional_instance_norm(conv(name, inputs, 3, nums_in, nums_out, 1), "cin"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
+    return conditional_instance_norm(conv(name, inputs, 3, nums_in, nums_out, 1), "cin"+name, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
 
 def relu(inputs):
     return tf.nn.relu(inputs)
@@ -50,11 +50,11 @@ def relu(inputs):
 def sigmoid(inputs):
     return tf.nn.sigmoid(inputs)
 
-def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, alpha1, alpha2, alpha3, istrain):
+def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
     temp = inputs * 1.0
-    inputs = conditional_instance_norm(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
+    inputs = conditional_instance_norm(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1"+name, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
     inputs = relu(inputs)
-    inputs = conditional_instance_norm(conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1), "cin2"+name, y1, y2, alpha1, alpha2, alpha3, istrain)
+    inputs = conditional_instance_norm(conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1), "cin2"+name, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
     return inputs + temp
 
 def content_loss(phi_content, phi_target):

@@ -10,11 +10,11 @@ parser = argparse.ArgumentParser()    #定义一个参数设置器
 parser.add_argument("--C_NUMS", type=int, default=10)     #参数：图片数量，默认值为10
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")    #参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")    #参数：结果存储路径
-parser.add_argument("--PATH_IMG", type=str, default="./imgs/5.jpg")      #参数：选择测试图像
-parser.add_argument("--LABEL_1", type=int, default=2)                    #参数：风格1
-parser.add_argument("--LABEL_2", type=int, default=4)                    #参数：风格2
-parser.add_argument("--LABEL_3", type=int, default=6)                    #参数：风格3
-parser.add_argument("--LABEL_4", type=int, default=8)                    #参数：风格4
+parser.add_argument("--PATH_IMG", type=str, default="./imgs/yao2.jpeg")      #参数：选择测试图像
+parser.add_argument("--LABEL_1", type=int, default=0)                    #参数：风格1
+parser.add_argument("--LABEL_2", type=int, default=1)                    #参数：风格2
+parser.add_argument("--LABEL_3", type=int, default=3)                    #参数：风格3
+parser.add_argument("--LABEL_4", type=int, default=6)                    #参数：风格4
 parser.add_argument("--ALPHA1", type=float, default=0.1)                  #参数：Alpah1，风格权重，默认为0.1
 parser.add_argument("--ALPHA2", type=float, default=0.1)                  #参数：Alpah2，风格权重，默认为0.1
 parser.add_argument("--ALPHA3", type=float, default=0.1)                  #参数：Alpah2，风格权重，默认为0.1
@@ -53,14 +53,14 @@ def stylize(img_path, result_path, label1, label2, label3, label4, alpha1, alpha
     Y3[0, label3] = 1
     Y4[0, label4] = 1
     img = sess.run(target, feed_dict={content_ph: img[np.newaxis, :, :, :], y1_ph: Y1, y2_ph: Y2, y3_ph: Y3, y4_ph: Y4, alpha1_ph: alpha1, alpha2_ph: alpha2, alpha3_ph: alpha3})  #生成图片
-    Image.fromarray(np.uint8(img[0, :, :, :])).save(result_path + 'result' + '_' + '%.2f'%(alpha1) + '_' + '%.2f'%(alpha2) + '_' + '%.2f'%(alpha3) + '_' + '%.2f'%(1-alpha1-alpha2-alpha3)+'.jpg')                   #保存风格迁移后的图片
+    Image.fromarray(np.uint8(img[0, :, :, :])).save(result_path + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + '%.2f'%(alpha1) + '_' + '%.2f'%(alpha2) + '_' + '%.2f'%(alpha3) + '_' + '%.2f'%(1-alpha1-alpha2-alpha3)+'.jpg')                   #保存风格迁移后的图片
     return img
 
 #测试程序
 def test():
     target, sess, content, y1, y2, y3, y4, alpha1, alpha2, alpha3 = Init(args.C_NUMS, args.PATH_MODEL)  #初始化生成模型
     size = 5
-    i=0
+    i = 0
     while i < size:
         x_sum=i*25.0
         y_sum = 100.0 - x_sum
@@ -69,8 +69,8 @@ def test():
 
         j=0
         while j < size:
-            ap1=j*x_step
-            ap2=x_sum-ap1
+            ap1 = j*x_step
+            ap2 = x_sum-ap1
             ap3 = j*y_step
             args.ALPHA1 = float('%.2f'%(ap1/100.0))
             args.ALPHA2 = float('%.2f'%(ap2/100.0))
@@ -90,7 +90,7 @@ def test():
         img_25.paste(img_5, (0, height*i, width*5, height*(i+1)))
         i = i+1
 
-    img_25.save(args.PATH_RESULTS + 'result_25'+'.jpg')
+    img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25'+'.jpg')
 
 #主程序
 def main():
