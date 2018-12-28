@@ -1,10 +1,42 @@
 # -*- coding: UTF-8 -*-
 import numpy as np
 import tensorflow as tf
-
-
+"""
+                                                            ^style loss
+                                                            |
+                                                            |
+                                          +-------------------------+
+                                          |*****************|*******|
++----------+                              |*                |      *|
+|  style   +------------------------------------------------------------>
++----------+                              |*  vgg-16        |      *|
+                +--------------------+    |* (discrimitor)  |      *|
+                |  graph  generator  |    |*                |      *|
++----------+    |                    |    |*                |      *|
+|  target  +------>                  +---------+------------+----------->
++---+------+    | (using  conditional|    |*   |                   *|
+    |           |  normalization)    |    |*   |                   *|
+    |           +--------------------+    |*   |                   *|
+    |                                     |*   |                   *|
+    +------------------------------------------------------------------->
+                                          |*   |                   *|
+                                          |****|********************|
+                                          +-------------------------+
+                                               |
+                                               |
+                                               v
+                                              content loss
+"""
 # ***********************************图像生成网络***********************************
+"""
+前向传播网络，也就是graph generator。
 
+input： target图片
+y...   风格的 one-hot tensor
+alpha...  对应风格的权重 其中保证alpha之和为1
+
+return ： 风格融合后的图片
+"""
 def forward(inputs, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
     # 处理输入图片
     inputs = tf.reverse(inputs, [-1]) - np.array([103.939, 116.779, 123.68])
@@ -34,6 +66,15 @@ def forward(inputs, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
     return inputs
 
 
+"""
+一个封装过的卷积层：
+name：名称
+k_size 核大小
+nums_in 上一层的channel
+nums_out 本层核的个数
+
+return tonsor
+"""
 def conv(name, inputs, k_size, nums_in, nums_out, strides):
     pad_size = k_size // 2
     inputs = tf.pad(inputs, [[0, 0], [pad_size, pad_size], [pad_size, pad_size], [0, 0]], mode="REFLECT")
@@ -43,6 +84,18 @@ def conv(name, inputs, k_size, nums_in, nums_out, strides):
     return tf.nn.conv2d(inputs, kernel, [1, strides, strides, 1], "VALID") + bias
 
 
+"""
+条件归一化层：
+详见论文： 
+A LEARNED REPRESENTATION FOR ARTISTIC STYLE
+及论文
+The Missing Ingredient for Fast Stylization
+
+这就是 gan的精髓，它将z的分布作为variable，训练之
+并将其作为 vector以供后续的风格融合
+
+return : the normalized, scaled, offset tensor.
+"""
 def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, alpha1=1, alpha2=0, alpha3=0,
                               istrain=True):
     mean, var = tf.nn.moments(x, axes=[1, 2], keep_dims=True)
@@ -84,6 +137,19 @@ def upsampling(name, inputs, nums_in, nums_out, y1, y2, y3, y4, alpha1, alpha2, 
                                      alpha2, alpha3, istrain)
 
 
+"""
+一层残差块
+详见：http://torch.ch/blog/2016/02/04/resnets.html
+以及论文：  He, Kaiming, et al. “Deep Residual Learning for Image Recognition.” arXiv preprint arXiv:1512.03385 (2015).
+
+name
+inputs tensor
+k_size 核大小
+nums_in = input.shape[3]
+nums_out
+
+返回 tonsor
+"""
 def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
     temp = inputs * 1.0
     inputs = conditional_instance_norm(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1" + name, y1,
@@ -95,7 +161,11 @@ def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, y3, y4, alpha1, al
 
 
 # ***********************************特征提取网络(VGG16)***********************************
+"""
+vgg16:
+return 包含指定层特征的字典，以供计算损失
 
+"""
 def vggnet(inputs, vgg_path):
     inputs = tf.reverse(inputs, [-1]) - np.array([103.939, 116.779, 123.68])  # 处理输入图片
     para = np.load(vgg_path + "vgg16.npy", encoding="latin1").item()  # 从vgg模型路径获得vgg模型
@@ -132,24 +202,41 @@ def max_pooling(inputs):
 
 # ***********************************损失函数***********************************
 
-# 内容损失函数
+"""
+以mse计算内容损失
+"""
 def content_loss(phi_content, phi_target):
     return tf.nn.l2_loss(phi_content["conv2_2"] - phi_target["conv2_2"]) * 2 / tf.cast(tf.size(phi_content["conv2_2"]),
                                                                                        dtype=tf.float32)
-# 风格损失函数
+
+
+"""
+todo :计算风格损失
+计算vgg中间层 的gram矩阵 的mse
+详见 Gatys`s A Neural Algorithm of Artistic Style arxiv:1508.06576v2
+
+phi_style:  
+phi_target:
+一个 tonsor的字典，包含两个图经过vgg后的中间输出
+"""
 def style_loss(phi_style, phi_target):
     layers = ["conv1_2", "conv2_2", "conv3_3", "conv4_3"]
     loss = 0
     for layer in layers:
         s_maps = phi_style[layer]
-        G_s = gram(s_maps)
+        G_s = get_gram_matrix(s_maps)
         t_maps = phi_target[layer]
-        G_t = gram(t_maps)
+        G_t = get_gram_matrix(t_maps)
         loss += tf.nn.l2_loss(G_s - G_t) * 2 / tf.cast(tf.size(G_t), dtype=tf.float32)
     return loss
 
-# gram计算
-def gram(layer):
+
+"""
+计算gram矩阵(tensor)
+
+返回 ：tensor
+"""
+def get_gram_matrix(layer):
     shape = tf.shape(layer)
     num_images = shape[0]
     width = shape[1]
