@@ -1,5 +1,5 @@
 # AI-Final-Project
-图片风格迁移实现，输入内容图片，将多种风格迁移到内容图片上，并可实现两种风格不同层次的融合
+图片风格迁移实现，输入内容图片，将多种风格迁移到内容图片上，并可实现四种风格不同层次的融合
 
 Simple implementation of the paper "A Learned Representation for Artistic Style"
 
