@@ -129,22 +129,27 @@ def test2():
         path = os.path.join(style_path, style_name)
         with Image.open(path) as img:
             img_resized = center_crop_img(img).resize((512, 512))
-            img_all.paste(img_resized, get_point(0, i + 1))
+            img_all.paste(img_resized, get_point(0, i + 1, 512))
     for content_n in range(y_len - 1):
         with Image.open(images[content_n]) as img:
             img_resized = center_crop_img(img).resize((512, 512))
             img_all.paste(img_resized, get_point(content_n + 1, 0, 512))
             for style_n in range(x_len - 1):
                 img_arr = np.array(img)
-                y = np.zeros([1, 10])
+                y = np.zeros([1, args.C_NUMS])
+                y2_ = np.zeros([1, args.C_NUMS])
+                y3_ = np.zeros([1, args.C_NUMS])
+                y4_ = np.zeros([1, args.C_NUMS])
                 y[0, style_n] = 1
                 img_stylized_arr = sess.run(target,
-                                            feed_dict={content: img_arr[np.newaxis, :, :, :], y1: y, y2: None, y3: None,
-                                                       y4: None, alpha1: 1, alpha2: None, alpha3: None})
+                                            feed_dict={content: img_arr[np.newaxis, :, :, :], y1: y, y2: y2_, y3: y3_,
+                                                       y4: y4_, alpha1: 1, alpha2: 0, alpha3: 0})
                 img_stylized = Image.fromarray(np.uint8(img_stylized_arr[0, :, :, :]))
-                img_stylized.save('{}_{}'.format(style_n, os.path.split(images[content_n])[1]))
+                image_file_name = '{}_{}'.format(style_n, os.path.split(images[content_n])[1])
+                img_stylized.save(os.path.join(args.PATH_RESULTS, image_file_name))
                 img_stylized = center_crop_img(img_stylized).resize((512, 512))
                 img_all.paste(img_stylized, get_point(content_n + 1, style_n + 1, 512))
+    img_all.save(os.path.join(args.PATH_RESULTS, 'img_all'))
 
 
 def get_point(row_n, col_n, cap):
