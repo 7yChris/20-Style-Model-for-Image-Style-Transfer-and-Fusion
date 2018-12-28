@@ -6,11 +6,13 @@ import os
 
 
 # backward需要用到的3个函数
-
+filenames = []
 # 内容图片的提取
 def random_batch(path, batch_size, shape):
     # 列出文件路径
-    filenames = os.listdir(path)
+    global filenames
+    if len(filenames) == 0:
+        filenames = os.listdir(path)
     # 在0和len间随机取两个数，即随机给出两个图片编号
     rand_samples = np.random.randint(0, len(filenames), [batch_size])
     # 初始化存储两张图片的矩阵
