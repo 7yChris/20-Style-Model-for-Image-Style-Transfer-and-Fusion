@@ -1,7 +1,10 @@
+# -*- coding: UTF-8 -*-
+
 import os
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+import scipy.misc as misc
 
 flags = tf.flags
 flags.DEFINE_string('path_data', './data', 'tfRecord save path.')
@@ -24,6 +27,7 @@ def generate_content_tfrecord():
     """
     制作coco数据集的tfRecord文件
     """
+    # 若文件夹不存在，则生成文件夹，并打印相关信息
     if not os.path.exists(FLAGS.path_data):
         os.makedirs(FLAGS.path_data)
         print("the directory was created successful")
@@ -33,6 +37,7 @@ def generate_content_tfrecord():
 
 
 def write_content_tfrecord():
+    # 定义writer对象
     writer = tf.python_io.TFRecordWriter(os.path.join(FLAGS.path_data, FLAGS.record_dataset_name))
     num_pic = 0
     example_list = list()
@@ -40,10 +45,13 @@ def write_content_tfrecord():
     # 读入coco原始数据集中文件路径集合
     for root, _, files in os.walk(FLAGS.path_content):
         for file in files:
+            # 检查是否为图像文件
             if os.path.splitext(file)[1] not in ['.jpg', '.png', '.jpeg']:
                 continue
+            # 若是，则加入文件路径集合
             file_path = os.path.join(root, file)
             file_path_list.append(file_path)
+
     # 对路径集合进行打乱
     np.random.shuffle(file_path_list)
     for file_path in file_path_list:
@@ -59,6 +67,7 @@ def write_content_tfrecord():
             example_list.append(example)
             num_pic += 1
             print('the number of picture:', num_pic)
+
     # 写入tfrecord文件
     for example in example_list:
         writer.write(example.SerializeToString())
@@ -92,7 +101,7 @@ def get_content_tfrecord(batch_size, path_tfrecord, image_size):
     return img_batch
 
 
-def center_crop_img(img: Image):
+def center_crop_img(img):
     """
     对图片按中心进行剪裁位正方形
     :param img: 原始图片
@@ -108,6 +117,50 @@ def center_crop_img(img: Image):
         height / 2 + offset
     ))
     return img
+
+
+# 风格图片随机提取
+def random_select_style(path, batch_size, shape, c_nums):
+    # 列出风格图片文件名
+    filenames = os.listdir(path)
+    # 随机选出一张风格图片
+    rand_sample = np.random.randint(0, len(filenames))
+    # 读取风格图片，并进行裁剪、resize
+    img = misc.imresize(crop(np.array(Image.open(path + str(rand_sample + 1) + ".png"))), [shape[0], shape[1]])
+    # 初始化风格图片存储矩阵
+    batch = np.zeros([batch_size, shape[0], shape[1], shape[2]])
+    # 标记选中了哪张风格图片
+    y = np.zeros([1, c_nums])
+    y[0, rand_sample] = 1
+    # 风格图片存储矩阵，存储batch_size个相同的风格图片
+    for i in range(batch_size):
+        batch[i, :, :, :] = img[:, :, :3]
+    return batch, y
+
+
+# 图片剪裁
+def crop(img):
+    # 得到图像的高
+    h = img.shape[0]
+    # 得到图像的宽
+    w = img.shape[1]
+
+    # 如果是长方形，则进行随机裁剪，使之介于正方形与原始图像尺寸之间
+    if h < w:
+        x = 0
+        y = np.random.randint(0, w - h + 1)
+        length = h
+    elif h > w:
+        x = np.random.randint(0, h - w + 1)
+        y = 0
+        length = w
+
+    # 如果是正方形，则不进行裁剪
+    else:
+        x = 0
+        y = 0
+        length = h
+    return img[x:x + length, y:y + length, :]
 
 
 def main():
