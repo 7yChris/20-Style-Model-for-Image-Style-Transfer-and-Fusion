@@ -4,7 +4,7 @@ from forward import vggnet, forward, content_loss, style_loss
 import tensorflow as tf
 
 from generateds import get_content_tfrecord
-from utils import random_batch, random_select_style
+from generateds import random_select_style
 from PIL import Image
 import numpy as np
 import scipy.misc as misc
