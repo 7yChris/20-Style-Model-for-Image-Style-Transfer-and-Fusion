@@ -1,8 +1,7 @@
 # -*- coding: UTF-8 -*-
 
-from forward import vggnet, forward
+from forward import vggnet, forward, content_loss, style_loss
 import tensorflow as tf
-from ops import content_loss, style_loss, gram
 from utils import random_batch, random_select_style
 from PIL import Image
 import numpy as np
@@ -40,7 +39,10 @@ parser.add_argument("--PATH_VGG16", type=str, default="./vgg_para/")
 parser.add_argument("--steps", type=int, default=50000)
 args = parser.parse_args()
 
-def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NUMS = 10, batch_size = 2, learning_rate = 0.001, content_weight = 1.0, style_weight = 5.0, path_content ="./MSCOCO/", path_style ="./style_imgs/", model_path="./save_para/", vgg_path="./vgg_para/"):
+
+def backward(IMG_H=256, IMG_W=256, IMG_C=3, STYLE_H=512, STYLE_W=512, C_NUMS=10, batch_size=2, learning_rate=0.001,
+             content_weight=1.0, style_weight=5.0, path_content="./MSCOCO/", path_style="./style_imgs/",
+             model_path="./save_para/", vgg_path="./vgg_para/"):
     # 内容图像：batch为2，图像大小为256*256*3
     content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
     # 风格图像：batch为2，图像大小为512*512*3
@@ -53,7 +55,7 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
     y_2 = tf.zeros([1, C_NUMS])
     # 风格4：0
     y_3 = tf.zeros([1, C_NUMS])
-    # alpha初始为1
+    # 初始化三个alpha
     alpha1 = tf.constant([1.])
     alpha2 = tf.constant([1.])
     alpha3 = tf.constant([1.])
@@ -72,16 +74,16 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
     # 内容Loss
     Content_loss = content_loss(Phi_C, Phi_T)
 
-    #定义当前训练轮数变量
+    # 定义当前训练轮数变量
     global_step = tf.Variable(0, trainable=False)
 
     # 优化器：Adam优化器，损失最小化
-    Opt = tf.train.AdamOptimizer(learning_rate).minimize(Loss,global_step=global_step)
+    Opt = tf.train.AdamOptimizer(learning_rate).minimize(Loss, global_step=global_step)
 
     # 实例化saver对象，便于之后保存模型
     saver = tf.train.Saver()
-
-    time_start=time.time()
+    # 开始计时
+    time_start = time.time()
 
     with tf.Session() as sess:
         # 初始化全局变量
@@ -90,7 +92,7 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
 
         # 在路径中查询有无checkpoint
         ckpt = tf.train.get_checkpoint_state(model_path)
-        #从checkpoint恢复模型
+        # 从checkpoint恢复模型
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
             print('Restore Model Successfully')
@@ -99,37 +101,44 @@ def backward(IMG_H = 256, IMG_W = 256, IMG_C = 3, STYLE_H=512, STYLE_W=512, C_NU
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
+        # 开始训练，共进行5万轮
         for itr in range(args.steps):
+            # 计时
             time_step_start = time.time()
+
             # 随机读取batch_size张内容图片，存储在四维矩阵中（batch_size*h*w*c）
-            batch_content= random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
-            # 随机选择1个风格图片，并范围含有batch_size张风格图片的存储矩阵，y_labels存储风格图片的标签
+            batch_content = random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
+            # 随机选择1个风格图片，并返回风格图片存储矩阵（batch_size*h*w*c，每个h*w*c都相同），y_labels为风格标签
             batch_style, y_labels = random_select_style(path_style, batch_size, [STYLE_H, STYLE_W, IMG_C], C_NUMS)
 
             # 喂数据，开始训练
             sess.run(Opt, feed_dict={content: batch_content, style: batch_style, y: y_labels})
             step = sess.run(global_step)
 
-            #打印相关信息
+            # 打印相关信息
             if itr % 100 == 0:
                 # 为之后打印信息进行相关计算
-                [loss, Target, CONTENT_LOSS, STYLE_LOSS] = sess.run([Loss, target, Content_loss, Style_loss], feed_dict={content: batch_content, style: batch_style, y: y_labels})
+                [loss, Target, CONTENT_LOSS, STYLE_LOSS] = sess.run([Loss, target, Content_loss, Style_loss],
+                                                                    feed_dict={content: batch_content,
+                                                                               style: batch_style, y: y_labels})
                 # 连接3张图片（内容图片、风格图片、生成图片）
                 save_img = np.concatenate((batch_content[0, :, :, :],
                                            misc.imresize(batch_style[0, :, :, :], [IMG_H, IMG_W]),
                                            Target[0, :, :, :]), axis=1)
                 # 打印轮数、总loss、内容loss、风格loss
-                print("Iteration: %d, Loss: %e, Content_loss: %e, Style_loss: %e"%
+                print("Iteration: %d, Loss: %e, Content_loss: %e, Style_loss: %e" %
                       (step, loss, CONTENT_LOSS, STYLE_LOSS))
-                # 打印3张图片
-                Image.fromarray(np.uint8(save_img)).save("save_imgs/"+str(itr) + "_" + str(np.argmax(y_labels[0, :]))+".jpg")
+                # 展示训练效果：打印3张图片，内容图+风格图+风格迁移图
+                Image.fromarray(np.uint8(save_img)).save(
+                    "save_imgs/" + str(itr) + "_" + str(np.argmax(y_labels[0, :])) + ".jpg")
 
             time_step_stop = time.time()
-            #存储模型
-            a=5
+            # 存储模型
+            a = 5
             if itr % a == 0:
-                saver.save(sess, model_path+"model", global_step=global_step)
-                print('Iteration: %d, Save Model Successfully, single step time = %.2fs, total time = %.2fs' % (step, time_step_stop-time_step_start,time_step_stop-time_start))
+                saver.save(sess, model_path + "model", global_step=global_step)
+                print('Iteration: %d, Save Model Successfully, single step time = %.2fs, total time = %.2fs' % (
+                    step, time_step_stop - time_step_start, time_step_stop - time_start))
 
         # 关闭多线程
         coord.request_stop()
