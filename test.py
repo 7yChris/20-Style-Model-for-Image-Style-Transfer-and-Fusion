@@ -4,17 +4,18 @@ import os
 import tensorflow as tf  # 导入tensorflow模块
 import numpy as np  # 导入numpy模块
 from PIL import Image  # 导入PIL模块
+from PIL import ImageOps
 from forward import forward  # 导入前向网络模块
 import argparse  # 导入参数选择模块
-
-# 设置参数
 from generateds import center_crop_img
 
+# 设置参数
 parser = argparse.ArgumentParser()  # 定义一个参数设置器
 parser.add_argument("--C_NUMS", type=int, default=10)  # 参数：图片数量，默认值为10
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")  # 参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")  # 参数：结果存储路径
 parser.add_argument("--PATH_IMG", type=str, default="./imgs/yao1.jpeg")  # 参数：选择测试图像
+parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
 parser.add_argument("--LABEL_1", type=int, default=0)  # 参数：风格1
 parser.add_argument("--LABEL_2", type=int, default=1)  # 参数：风格2
 parser.add_argument("--LABEL_3", type=int, default=2)  # 参数：风格3
@@ -76,8 +77,8 @@ def test():
     # 按行生成
     while i < size:
         # 权重step值
-        x_sum = i * 25.0
-        y_sum = 100.0 - x_sum
+        x_sum = 100 - i * 25.0
+        y_sum = i * 25
         x_step = x_sum / 4.0
         y_step = y_sum / 4.0
 
@@ -85,9 +86,9 @@ def test():
         j = 0
         while j < size:
             # 计算权重
-            ap1 = j * x_step
-            ap2 = x_sum - ap1
-            ap3 = j * y_step
+            ap1 = x_sum - j * x_step
+            ap2 = j * x_step
+            ap3 = y_sum - j * y_step
             args.ALPHA1 = float('%.2f' % (ap1 / 100.0))
             args.ALPHA2 = float('%.2f' % (ap2 / 100.0))
             args.ALPHA3 = float('%.2f' % (ap3 / 100.0))
@@ -113,8 +114,27 @@ def test():
 
         i = i + 1
 
+    # 将5*5矩阵图像的4个角加上4个风格图像，以作对比
+    img_25_4 = Image.new(img_return.mode, (width * 7, height * 7))
+    img_25_4 = ImageOps.invert(img_25_4)
+    img_25_4.paste(
+        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_1 + 1) + '.png')).resize((width, height)),
+        (0, 0, width, height))
+    img_25_4.paste(
+        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_2 + 1) + '.png')).resize((width, height)),
+        (width * 6, 0, width * 7, height))
+    img_25_4.paste(
+        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_3 + 1) + '.png')).resize((width, height)),
+        (0, height * 6, width, height * 7))
+    img_25_4.paste(
+        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_4 + 1) + '.png')).resize((width, height)),
+        (width * 6, height * 6, width * 7, height * 7))
+    img_25_4.paste(img_25, [width, height, width * 6, height * 6])
+
     # 存储5*5图像矩阵
     img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25' + '.jpg')
+    # 存储5*5+4风格图像矩阵
+    img_25_4.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25_4' + '.jpg')
 
 
 def test2():
@@ -129,27 +149,22 @@ def test2():
         path = os.path.join(style_path, style_name)
         with Image.open(path) as img:
             img_resized = center_crop_img(img).resize((512, 512))
-            img_all.paste(img_resized, get_point(0, i + 1, 512))
+            img_all.paste(img_resized, get_point(0, i + 1))
     for content_n in range(y_len - 1):
         with Image.open(images[content_n]) as img:
             img_resized = center_crop_img(img).resize((512, 512))
             img_all.paste(img_resized, get_point(content_n + 1, 0, 512))
             for style_n in range(x_len - 1):
                 img_arr = np.array(img)
-                y = np.zeros([1, args.C_NUMS])
-                y2_ = np.zeros([1, args.C_NUMS])
-                y3_ = np.zeros([1, args.C_NUMS])
-                y4_ = np.zeros([1, args.C_NUMS])
+                y = np.zeros([1, 10])
                 y[0, style_n] = 1
                 img_stylized_arr = sess.run(target,
-                                            feed_dict={content: img_arr[np.newaxis, :, :, :], y1: y, y2: y2_, y3: y3_,
-                                                       y4: y4_, alpha1: 1, alpha2: 0, alpha3: 0})
+                                            feed_dict={content: img_arr[np.newaxis, :, :, :], y1: y, y2: None, y3: None,
+                                                       y4: None, alpha1: 1, alpha2: None, alpha3: None})
                 img_stylized = Image.fromarray(np.uint8(img_stylized_arr[0, :, :, :]))
-                image_file_name = '{}_{}'.format(style_n, os.path.split(images[content_n])[1])
-                img_stylized.save(os.path.join(args.PATH_RESULTS, image_file_name))
+                img_stylized.save('{}_{}'.format(style_n, os.path.split(images[content_n])[1]))
                 img_stylized = center_crop_img(img_stylized).resize((512, 512))
                 img_all.paste(img_stylized, get_point(content_n + 1, style_n + 1, 512))
-    img_all.save(os.path.join(args.PATH_RESULTS, 'img_all'))
 
 
 def get_point(row_n, col_n, cap):
@@ -158,8 +173,6 @@ def get_point(row_n, col_n, cap):
 
 
 # 主程序
-
-
 def main():
     test()
 
