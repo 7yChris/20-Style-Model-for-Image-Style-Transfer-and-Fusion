@@ -2,39 +2,30 @@
 import numpy as np
 import tensorflow as tf
 """
-                                                            ^style loss
-                                                            |
-                                                            |
-                                          +-------------------------+
-                                          |*****************|*******|
-+----------+                              |*                |      *|
-|  style   +------------------------------------------------------------>
-+----------+                              |*  vgg-16        |      *|
-                +--------------------+    |* (discrimitor)  |      *|
-                |  graph  generator  |    |*                |      *|
-+----------+    |                    |    |*                |      *|
-|  target  +------>                  +---------+------------+----------->
-+---+------+    | (using  conditional|    |*   |                   *|
-    |           |  normalization)    |    |*   |                   *|
-    |           +--------------------+    |*   |                   *|
-    |                                     |*   |                   *|
-    +------------------------------------------------------------------->
-                                          |*   |                   *|
-                                          |****|********************|
-                                          +-------------------------+
-                                               |
-                                               |
-                                               v
-                                              content loss
+                                                                  ^style loss
+                                                                  |
+                                    
+        +----------+                            |*****************|*******|
+        |  style   +---------------------------->-----------------+------->--->
+        +----------+    +********************+  |*  discrimitor   |      *|
+        +----------+    |* generator        *|  |* ( vgg-16 )     |      *|
+        |  target  +----> (using  conditional+-->----+------------+------->--->
+        +---+------+    |* normalization)   *|  |*   |                   *|
+            |           +********************+  |*   |                   *|
+            +----------------------------------->----+-------------------->--->
+                                                |****|********************|
+                                                     |
+                                                     v content loss
 """
 # ***********************************图像生成网络***********************************
 """
 前向传播网络，也就是graph generator。
+网络结构由Johnson提出
+详见论文 Perceptual Losses for Real-Time Style Transfer and Super-Resolution  arxiv:1603.08155
 
 input： target图片
-y...   风格的 one-hot tensor
-alpha...  对应风格的权重 其中保证alpha之和为1
-
+y...   风格的 one-hot （tensor)
+alpha...  测试时对应风格的权重 （并保证alpha之和为1）
 return ： 风格融合后的图片
 """
 def forward(inputs, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
@@ -76,12 +67,21 @@ nums_out 本层核的个数
 return tonsor
 """
 def conv(name, inputs, k_size, nums_in, nums_out, strides):
-    pad_size = k_size // 2
-    inputs = tf.pad(inputs, [[0, 0], [pad_size, pad_size], [pad_size, pad_size], [0, 0]], mode="REFLECT")
+    #使用正态分布初始化核
     kernel = tf.get_variable(name + "W", [k_size, k_size, nums_in, nums_out],
                              initializer=tf.truncated_normal_initializer(stddev=0.01))
+    #0初始化bias
     bias = tf.get_variable(name + "B", [nums_out], initializer=tf.constant_initializer(0.))
-    return tf.nn.conv2d(inputs, kernel, [1, strides, strides, 1], "VALID") + bias
+
+    # 使用 valid方式进行卷积避免 输出图像边缘发黑。
+    # 为了保证输入输出图像大小一致，对原始输入按"REFLECT"方式填充。
+    pad_size = k_size // 2
+    inputs = tf.pad(inputs, [[0, 0], [pad_size, pad_size], [
+                    pad_size, pad_size], [0, 0]], mode="REFLECT")
+    input = tf.nn.conv2d(
+        inputs, kernel, [1, strides, strides, 1], "VALID") + bias
+
+    return input
 
 
 """
@@ -92,13 +92,13 @@ A LEARNED REPRESENTATION FOR ARTISTIC STYLE
 The Missing Ingredient for Fast Stylization
 
 这就是 gan的精髓，它将z的分布作为variable，训练之
-并将其作为 vector以供后续的风格融合
+并将其作为 vector以实现风格融合
 
 return : the normalized, scaled, offset tensor.
 """
 def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, alpha1=1, alpha2=0, alpha3=0,
                               istrain=True):
-    mean, var = tf.nn.moments(x, axes=[1, 2], keep_dims=True)
+    
     if y1 == None:
         beta = tf.get_variable(name=scope_bn + 'beta', shape=[x.shape[-1]], initializer=tf.constant_initializer([0.]),
                                trainable=True)  # label_nums x C
@@ -113,10 +113,12 @@ def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, a
             beta = tf.matmul(y1, beta)
             gamma = tf.matmul(y1, gamma)
         else:
+            #此时进行风格融合，y2... alpha...有效
             beta = tf.get_variable(name=scope_bn + 'beta', shape=[y1.shape[-1], x.shape[-1]],
                                    initializer=tf.constant_initializer([0.]), trainable=True)  # label_nums x C
             gamma = tf.get_variable(name=scope_bn + 'gamma', shape=[y1.shape[-1], x.shape[-1]],
                                     initializer=tf.constant_initializer([1.]), trainable=True)  # label_nums x C
+            #one-hot直接点乘beta/gamma矩阵即得到对应的 beta/gamma
             beta1 = tf.matmul(y1, beta)
             gamma1 = tf.matmul(y1, gamma)
             beta2 = tf.matmul(y2, beta)
@@ -125,8 +127,11 @@ def conditional_instance_norm(x, scope_bn, y1=None, y2=None, y3=None, y4=None, a
             gamma3 = tf.matmul(y3, gamma)
             beta4 = tf.matmul(y4, beta)
             gamma4 = tf.matmul(y4, gamma)
+            #对beta和gamma进行仿射变换。
             beta = alpha1 * beta1 + alpha2 * beta2 + alpha3 * beta3 + (1.0 - alpha1 - alpha2 - alpha3) * beta4
             gamma = alpha1 * gamma1 + alpha2 * gamma2 + alpha3 * gamma3 + (1.0 - alpha1 - alpha2 - alpha3) * gamma4
+
+    mean, var = tf.nn.moments(x, axes=[1, 2], keep_dims=True)
     x = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-10)
     return x
 
@@ -203,7 +208,7 @@ def max_pooling(inputs):
 # ***********************************损失函数***********************************
 
 """
-以mse计算内容损失
+以L2距离计算内容损失
 """
 def content_loss(phi_content, phi_target):
     return tf.nn.l2_loss(phi_content["conv2_2"] - phi_target["conv2_2"]) * 2 / tf.cast(tf.size(phi_content["conv2_2"]),
@@ -211,8 +216,9 @@ def content_loss(phi_content, phi_target):
 
 
 """
-todo :计算风格损失
-计算vgg中间层 的gram矩阵 的mse
+计算风格损失
+
+实际上是计算vgg中间输出gram矩阵 的l2距离
 详见 Gatys`s A Neural Algorithm of Artistic Style arxiv:1508.06576v2
 
 phi_style:  
@@ -223,11 +229,11 @@ def style_loss(phi_style, phi_target):
     layers = ["conv1_2", "conv2_2", "conv3_3", "conv4_3"]
     loss = 0
     for layer in layers:
-        s_maps = phi_style[layer]
-        G_s = get_gram_matrix(s_maps)
-        t_maps = phi_target[layer]
-        G_t = get_gram_matrix(t_maps)
-        loss += tf.nn.l2_loss(G_s - G_t) * 2 / tf.cast(tf.size(G_t), dtype=tf.float32)
+        style_output = phi_style[layer]
+        style_gram = get_gram_matrix(style_output)
+        target_output = phi_target[layer]
+        target_gram = get_gram_matrix(target_output)
+        loss += tf.nn.l2_loss(style_gram - target_gram) * 2 / tf.cast(tf.size(target_gram), dtype=tf.float32)
     return loss
 
 
