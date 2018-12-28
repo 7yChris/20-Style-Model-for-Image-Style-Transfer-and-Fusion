@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-flags = tf.app.flags
+flags = tf.flags
 flags.DEFINE_string('path_data', './data', 'tfRecord save path.')
 flags.DEFINE_string('path_style', "./style_imgs", 'Row style images path')
 flags.DEFINE_string('path_content', "./MSCOCO", 'Row style images path')
@@ -20,58 +20,99 @@ flags.DEFINE_integer('style_w', 512, 'Style images\' width')
 FLAGS = flags.FLAGS
 
 
-def generate_content_tfRecord():
-    if not os.path.exists(FLAGS.data_path):
-        os.makedirs(FLAGS.data_path)
+def generate_content_tfrecord():
+    """
+    制作coco数据集的tfRecord文件
+    """
+    if not os.path.exists(FLAGS.path_data):
+        os.makedirs(FLAGS.path_data)
         print("the directory was created successful")
     else:
         print("directory already exists")
-    write_content_tfRecord()
+    write_content_tfrecord()
 
 
-def write_content_tfRecord():
-    writer = tf.python_io.TFRecordWriter(FLAGS.record_dataset_name)
+def write_content_tfrecord():
+    writer = tf.python_io.TFRecordWriter(os.path.join(FLAGS.path_data, FLAGS.record_dataset_name))
     num_pic = 0
     example_list = list()
     file_path_list = []
+    # 读入coco原始数据集中文件路径集合
     for root, _, files in os.walk(FLAGS.path_content):
         for file in files:
-            if os.path.splitext(file)[1] not in ['jpg', 'png', 'jpeg']:
+            if os.path.splitext(file)[1] not in ['.jpg', '.png', '.jpeg']:
                 continue
             file_path = os.path.join(root, file)
             file_path_list.append(file_path)
+    # 对路径集合进行打乱
     np.random.shuffle(file_path_list)
     for file_path in file_path_list:
         with Image.open(file_path) as img:
+            # 对coco数据集图片剪裁为正方形
             img = center_crop_img(img)
+            # resize图片大小
             img = img.resize((FLAGS.img_w, FLAGS.img_h))
             img_raw = img.tobytes()
-            example = tf.train.Example(features=tf.train.Feature(feature={
+            example = tf.train.Example(features=tf.train.Features(feature={
                 'img_raw': tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_raw]))
             }))
             example_list.append(example)
             num_pic += 1
             print('the number of picture:', num_pic)
+    # 写入tfrecord文件
     for example in example_list:
-        writer.write(example.SerializerToString())
+        writer.write(example.SerializeToString())
     print('write tfrecord successful')
 
 
-def center_crop_img(img : Image):
+def read_content_tfrecord(path_tfrecord, image_size):
+    filename_queue = tf.train.string_input_producer([path_tfrecord])
+    reader = tf.TFRecordReader()
+    _, serialized_example = reader.read(filename_queue)
+    features = tf.parse_single_example(serialized_example, features={
+        'img_raw': tf.FixedLenFeature([], tf.string)
+    })
+    # 解码图片数据
+    img = tf.decode_raw(features['img_raw'], tf.uint8)
+    img.set_shape([image_size * image_size * 3])
+    return img
+
+
+def get_content_tfrecord(batch_size, path_tfrecord, image_size):
+    """
+    获取content_batch，用于训练
+    :param batch_size:
+    :param path_tfrecord: tfrecord存储路径
+    :param image_size: 图片尺寸
+    :return: content_batch op
+    """
+    print(path_tfrecord, batch_size, image_size)
+    img = read_content_tfrecord(path_tfrecord, image_size)
+    img_batch = tf.train.shuffle_batch([img, ], batch_size=batch_size, num_threads=2, capacity=10, min_after_dequeue=1)
+    return img_batch
+
+
+def center_crop_img(img: Image):
+    """
+    对图片按中心进行剪裁位正方形
+    :param img: 原始图片
+    :return:
+    """
     width = img.size[0]
     height = img.size[1]
     offset = (width if width < height else height) / 2
     img = img.crop((
         width / 2 - offset,
-        height /2 - offset,
+        height / 2 - offset,
         width / 2 + offset,
         height / 2 + offset
     ))
     return img
 
+
 def main():
-    generate_content_tfRecord()
+    generate_content_tfrecord()
+
 
 if __name__ == '__main__':
-    tf.app.run(main)
-
+    main()

@@ -158,3 +158,10 @@ fabric.properties
 # Editor-based Rest Client
 .idea/httpRequests
 
+data/*
+MSCOCO/*
+save_imgs/*
+vgg_para/*
+style_imgs/*
+save_para/*
+

@@ -2,12 +2,15 @@
 
 from forward import vggnet, forward, content_loss, style_loss
 import tensorflow as tf
+
+from generateds import get_content_tfrecord
 from utils import random_batch, random_select_style
 from PIL import Image
 import numpy as np
 import scipy.misc as misc
 import argparse
 import time
+import os
 
 # 初始化各种参数
 parser = argparse.ArgumentParser()
@@ -42,7 +45,8 @@ args = parser.parse_args()
 
 def backward(IMG_H=256, IMG_W=256, IMG_C=3, STYLE_H=512, STYLE_W=512, C_NUMS=10, batch_size=2, learning_rate=0.001,
              content_weight=1.0, style_weight=5.0, path_content="./MSCOCO/", path_style="./style_imgs/",
-             model_path="./save_para/", vgg_path="./vgg_para/"):
+             model_path="./save_para/", vgg_path="./vgg_para/", path_data='./data',
+             dataset_name='coco_train.tfrecords'):
     # 内容图像：batch为2，图像大小为256*256*3
     content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
     # 风格图像：batch为2，图像大小为512*512*3
@@ -80,6 +84,8 @@ def backward(IMG_H=256, IMG_W=256, IMG_C=3, STYLE_H=512, STYLE_W=512, C_NUMS=10,
     # 优化器：Adam优化器，损失最小化
     Opt = tf.train.AdamOptimizer(learning_rate).minimize(Loss, global_step=global_step)
 
+    content_batch = get_content_tfrecord(batch_size, os.path.join(path_data, dataset_name), IMG_H)
+
     # 实例化saver对象，便于之后保存模型
     saver = tf.train.Saver()
     # 开始计时
@@ -107,7 +113,9 @@ def backward(IMG_H=256, IMG_W=256, IMG_C=3, STYLE_H=512, STYLE_W=512, C_NUMS=10,
             time_step_start = time.time()
 
             # 随机读取batch_size张内容图片，存储在四维矩阵中（batch_size*h*w*c）
-            batch_content = random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
+            # batch_content = random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
+            batch_content = sess.run(content_batch)
+            batch_content = np.reshape(batch_content, [batch_size, IMG_W, IMG_H, IMG_C])
             # 随机选择1个风格图片，并返回风格图片存储矩阵（batch_size*h*w*c，每个h*w*c都相同），y_labels为风格标签
             batch_style, y_labels = random_select_style(path_style, batch_size, [STYLE_H, STYLE_W, IMG_C], C_NUMS)
 
