@@ -22,7 +22,7 @@ parser.add_argument("--IMG_C", type=int, default=3)
 parser.add_argument("--STYLE_H", type=int, default=512)
 parser.add_argument("--STYLE_W", type=int, default=512)
 # 风格图像张数
-parser.add_argument("--C_NUMS", type=int, default=10)
+parser.add_argument("--C_NUMS", type=int, default=20)
 # Batch大小，默认为2
 parser.add_argument("--BATCH_SIZE", type=int, default=2)
 # 学习率
@@ -31,22 +31,28 @@ parser.add_argument("--LEARNING_RATE", type=float, default=0.001)
 parser.add_argument("--CONTENT_WEIGHT", type=float, default=1.0)
 parser.add_argument("--STYLE_WEIGHT", type=float, default=5.0)
 # 训练内容图像路径，train2014
-parser.add_argument("--PATH_CONTENT", type=str, default=".MSCOCO")
+parser.add_argument("--PATH_CONTENT", type=str, default="./MSCOCO/")
 # 风格图像路径
 parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
 # 生成模型路径
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")
 # VGG16路径
 parser.add_argument("--PATH_VGG16", type=str, default="./vgg_para/")
+# 数据集路径
+parser.add_argument("--PATH_DATA", type=str, default="./data/")
+# 数据集名称
+parser.add_argument("--DATASET_NAME", type=str, default="coco_train.tfrecords")
 # 训练轮数
 parser.add_argument("--steps", type=int, default=50000)
 args = parser.parse_args()
 
 
-def backward(IMG_H=256, IMG_W=256, IMG_C=3, STYLE_H=512, STYLE_W=512, C_NUMS=10, batch_size=2, learning_rate=0.001,
-             content_weight=1.0, style_weight=5.0, path_content="./MSCOCO/", path_style="./style_imgs/",
-             model_path="./save_para/", vgg_path="./vgg_para/", path_data='./data',
-             dataset_name='coco_train.tfrecords'):
+def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.STYLE_H, STYLE_W=args.STYLE_W,
+             C_NUMS=args.C_NUMS, batch_size=args.BATCH_SIZE, learning_rate=args.LEARNING_RATE,
+             content_weight=args.CONTENT_WEIGHT, style_weight=args.STYLE_WEIGHT, path_style=args.PATH_STYLE,
+             model_path=args.PATH_MODEL, vgg_path=args.PATH_VGG16, path_data=args.PATH_DATA,
+             dataset_name=args.DATASET_NAME):
+
     # 内容图像：batch为2，图像大小为256*256*3
     content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
     # 风格图像：batch为2，图像大小为512*512*3

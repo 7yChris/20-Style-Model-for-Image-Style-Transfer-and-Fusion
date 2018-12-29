@@ -11,22 +11,22 @@ from generateds import center_crop_img
 
 # 设置参数
 parser = argparse.ArgumentParser()  # 定义一个参数设置器
-parser.add_argument("--C_NUMS", type=int, default=10)  # 参数：图片数量，默认值为10
+parser.add_argument("--C_NUMS", type=int, default=20)  # 参数：图片数量，默认值为10
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")  # 参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")  # 参数：结果存储路径
-parser.add_argument("--PATH_IMG", type=str, default="./imgs/yao1.jpeg")  # 参数：选择测试图像
+parser.add_argument("--PATH_IMG", type=str, default="./imgs/shanghai1.jpg")  # 参数：选择测试图像
 parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
-parser.add_argument("--LABEL_1", type=int, default=0)  # 参数：风格1
-parser.add_argument("--LABEL_2", type=int, default=1)  # 参数：风格2
-parser.add_argument("--LABEL_3", type=int, default=2)  # 参数：风格3
-parser.add_argument("--LABEL_4", type=int, default=3)  # 参数：风格4
-parser.add_argument("--ALPHA1", type=float, default=0.1)  # 参数：Alpah1，风格权重，默认为0.1
-parser.add_argument("--ALPHA2", type=float, default=0.1)  # 参数：Alpah2，风格权重，默认为0.1
-parser.add_argument("--ALPHA3", type=float, default=0.1)  # 参数：Alpah2，风格权重，默认为0.1
+parser.add_argument("--LABEL_1", type=int, default=2)  # 参数：风格1
+parser.add_argument("--LABEL_2", type=int, default=8)  # 参数：风格2
+parser.add_argument("--LABEL_3", type=int, default=10)  # 参数：风格3
+parser.add_argument("--LABEL_4", type=int, default=19)  # 参数：风格4
+parser.add_argument("--ALPHA1", type=float, default=0.25)  # 参数：Alpha1，风格权重，默认为0.25
+parser.add_argument("--ALPHA2", type=float, default=0.25)  # 参数：Alpha2，风格权重，默认为0.25
+parser.add_argument("--ALPHA3", type=float, default=0.25)  # 参数：Alpha3，风格权重，默认为0.25
 args = parser.parse_args()  # 定义参数集合args
 
 
-def Init(c_nums=10, model_path=args.PATH_MODEL):  # 初始化图片生成模型参数
+def Init(c_nums=args.C_NUMS, model_path=args.PATH_MODEL):  # 初始化图片生成模型参数
     content = tf.placeholder(tf.float32, [1, None, None, 3])  # 图片输入定义
     y1 = tf.placeholder(tf.float32, [1, c_nums])  # 初始化风格1选择范围
     y2 = tf.placeholder(tf.float32, [1, c_nums])  # 初始化风格2选择范围
@@ -50,10 +50,10 @@ def stylize(img_path, result_path, label1, label2, label3, label4, alpha1, alpha
             y1_ph, y2_ph, y3_ph, y4_ph, alpha1_ph, alpha2_ph, alpha3_ph):  # 风格迁移
     print('%.2f' % alpha1, '%.2f' % alpha2, '%.2f' % alpha3, '%.2f' % (1.0 - alpha1 - alpha2 - alpha3))
     img = np.array(Image.open(img_path))  # 将输入图片序列化
-    Y1 = np.zeros([1, 10])  # 数组置0
-    Y2 = np.zeros([1, 10])  # 数组置0
-    Y3 = np.zeros([1, 10])
-    Y4 = np.zeros([1, 10])
+    Y1 = np.zeros([1, args.C_NUMS])  # 数组置0
+    Y2 = np.zeros([1, args.C_NUMS])  # 数组置0
+    Y3 = np.zeros([1, args.C_NUMS])
+    Y4 = np.zeros([1, args.C_NUMS])
     Y1[0, label1] = 1  # 第label1个风格置1
     Y2[0, label2] = 1  # 第label2个风格置1
     Y3[0, label3] = 1
