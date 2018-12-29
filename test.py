@@ -115,7 +115,7 @@ def test():
         i = i + 1
 
     # 将5*5矩阵图像的4个角加上4个风格图像，以作对比
-    img_25_4 = Image.new(img_return.mode, (width * 7, height * 7))
+    img_25_4 = Image.new(img_return.mode, (width * 7, height * 5))
     img_25_4 = ImageOps.invert(img_25_4)
     img_25_4.paste(
         center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_1 + 1) + '.png')).resize((width, height)),
@@ -125,11 +125,11 @@ def test():
         (width * 6, 0, width * 7, height))
     img_25_4.paste(
         center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_3 + 1) + '.png')).resize((width, height)),
-        (0, height * 6, width, height * 7))
+        (0, height * 4, width, height * 5))
     img_25_4.paste(
         center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_4 + 1) + '.png')).resize((width, height)),
-        (width * 6, height * 6, width * 7, height * 7))
-    img_25_4.paste(img_25, [width, height, width * 6, height * 6])
+        (width * 6, height * 4, width * 7, height * 5))
+    img_25_4.paste(img_25, [width, 0, width * 6, height * 5])
 
     # 存储5*5图像矩阵
     img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25' + '.jpg')
