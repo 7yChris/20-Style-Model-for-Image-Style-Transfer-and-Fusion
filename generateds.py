@@ -61,20 +61,19 @@ def write_content_tfrecord():
             # resize图片大小
             img = img.resize((FLAGS.img_w, FLAGS.img_h))
             img_raw = img.tobytes()
+            # 为图像建Example
             example = tf.train.Example(features=tf.train.Features(feature={
                 'img_raw': tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_raw]))
             }))
-            example_list.append(example)
+            # 写入tfrecord文件
             num_pic += 1
+            writer.write(example.SerializeToString())
             print('the number of picture:', num_pic)
-
-    # 写入tfrecord文件
-    for example in example_list:
-        writer.write(example.SerializeToString())
     print('write tfrecord successful')
 
 
 def read_content_tfrecord(path_tfrecord, image_size):
+    # 创建文件队列
     filename_queue = tf.train.string_input_producer([path_tfrecord])
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
@@ -83,6 +82,7 @@ def read_content_tfrecord(path_tfrecord, image_size):
     })
     # 解码图片数据
     img = tf.decode_raw(features['img_raw'], tf.uint8)
+    # 设置图片shape
     img.set_shape([image_size * image_size * 3])
     return img
 
