@@ -60,6 +60,7 @@ def write_content_tfrecord():
             img = center_crop_img(img)
             # resize图片大小
             img = img.resize((FLAGS.img_w, FLAGS.img_h))
+            img = img.convert('RGB')
             img_raw = img.tobytes()
             # 为图像建Example
             example = tf.train.Example(features=tf.train.Features(feature={
@@ -95,7 +96,6 @@ def get_content_tfrecord(batch_size, path_tfrecord, image_size):
     :param image_size: 图片尺寸
     :return: content_batch op
     """
-    print(path_tfrecord, batch_size, image_size)
     img = read_content_tfrecord(path_tfrecord, image_size)
     img_batch = tf.train.shuffle_batch([img, ], batch_size=batch_size, num_threads=2, capacity=10, min_after_dequeue=1)
     return img_batch
