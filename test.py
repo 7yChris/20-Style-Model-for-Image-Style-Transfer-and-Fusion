@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser()  # 定义一个参数设置器
 parser.add_argument("--C_NUMS", type=int, default=20)  # 参数：图片数量，默认值为10
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")  # 参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")  # 参数：结果存储路径
-parser.add_argument("--PATH_IMG", type=str, default="./imgs/shanghai1.jpg")  # 参数：选择测试图像
+parser.add_argument("--PATH_IMG", type=str, default="./imgs/ruanwei.jpeg")  # 参数：选择测试图像
 parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
 parser.add_argument("--LABEL_1", type=int, default=2)  # 参数：风格1
 parser.add_argument("--LABEL_2", type=int, default=8)  # 参数：风格2
@@ -42,7 +42,7 @@ def Init(c_nums=args.C_NUMS, model_path=args.PATH_MODEL):  # 初始化图片生�
     ckpt = tf.train.get_checkpoint_state(model_path)  # 从模型存储路径中获取模型
     if ckpt and ckpt.model_checkpoint_path:  # 从检查点中恢复模型
         saver.restore(sess, ckpt.model_checkpoint_path)  # 从检查点的路径名中分离出训练轮数
-        global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]  # 获取训练步数
+        # global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]  # 获取训练步数
     return target, sess, content, y1, y2, y3, y4, alpha1, alpha2, alpha3  # 返回目标图片，模型session，输入图片，风格选择，风格权重
 
 
@@ -61,7 +61,8 @@ def stylize(img_path, result_path, label1, label2, label3, label4, alpha1, alpha
     img = sess.run(target, feed_dict={content_ph: img[np.newaxis, :, :, :], y1_ph: Y1, y2_ph: Y2, y3_ph: Y3, y4_ph: Y4,
                                       alpha1_ph: alpha1, alpha2_ph: alpha2, alpha3_ph: alpha3})  # 生成图片
     Image.fromarray(np.uint8(img[0, :, :, :])).save(
-        result_path + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + '%.2f' % (alpha1) + '_' + '%.2f' % (
+        result_path + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(label1) + '_' + str(label2) + '_' + str(
+            label3) + '_' + str(label4) + '_' + '%.2f' % (alpha1) + '_' + '%.2f' % (
             alpha2) + '_' + '%.2f' % (alpha3) + '_' + '%.2f' % (1 - alpha1 - alpha2 - alpha3) + '.jpg')  # 保存风格迁移后的图片
     return img
 
@@ -76,19 +77,24 @@ def test():
     i = 0
     # 按行生成
     while i < size:
-        # 权重step值
+        # 1、2风格权重之和
         x_sum = 100 - i * 25.0
+        # 3、4风格权重之和
         y_sum = i * 25
+        # 1、2风格之和进行五等分，计算权重step值
         x_step = x_sum / 4.0
+        # 3、4风格之和进行五等分，计算权重step值
         y_step = y_sum / 4.0
 
         # 按列生成
         j = 0
         while j < size:
-            # 计算权重
+            # 计算1、2风格的权重
             ap1 = x_sum - j * x_step
             ap2 = j * x_step
+            # 计算3风格权重
             ap3 = y_sum - j * y_step
+            # 归一化后存到args中
             args.ALPHA1 = float('%.2f' % (ap1 / 100.0))
             args.ALPHA2 = float('%.2f' % (ap2 / 100.0))
             args.ALPHA3 = float('%.2f' % (ap3 / 100.0))
@@ -132,9 +138,11 @@ def test():
     img_25_4.paste(img_25, [width, 0, width * 6, height * 5])
 
     # 存储5*5图像矩阵
-    img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25' + '.jpg')
+    img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(args.LABEL_1) + '_' + str(
+        args.LABEL_2) + '_' + str(args.LABEL_3) + '_' + str(args.LABEL_4) + '_result_25' + '.jpg')
     # 存储5*5+4风格图像矩阵
-    img_25_4.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_result_25_4' + '.jpg')
+    img_25_4.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(args.LABEL_1) + '_' + str(
+        args.LABEL_2) + '_' + str(args.LABEL_3) + '_' + str(args.LABEL_4) + '_result_25_4' + '.jpg')
 
 
 def test2():

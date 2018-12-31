@@ -57,7 +57,7 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
     content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
     # 风格图像：batch为2，图像大小为512*512*3
     style = tf.placeholder(tf.float32, [batch_size, STYLE_H, STYLE_W, IMG_C])
-    # 风格1：喂入一种风格的标签
+    # 风格1：训练风格的标签
     y = tf.placeholder(tf.float32, [1, C_NUMS])
     # 风格2：0
     y_1 = tf.zeros([1, C_NUMS])
@@ -67,8 +67,8 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
     y_3 = tf.zeros([1, C_NUMS])
     # 初始化三个alpha
     alpha1 = tf.constant([1.])
-    alpha2 = tf.constant([1.])
-    alpha3 = tf.constant([1.])
+    alpha2 = tf.constant([0.])
+    alpha3 = tf.constant([0.])
 
     # 图像生成网络：前向传播
     target = forward(content, y, y_1, y_2, y_3, alpha1, alpha2, alpha3, True)
@@ -77,12 +77,12 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
     Phi_C = vggnet(content, vgg_path)
     Phi_S = vggnet(style, vgg_path)
     # Loss计算
-    # 总Loss
-    Loss = content_loss(Phi_C, Phi_T) * content_weight + style_loss(Phi_S, Phi_T) * style_weight
-    # 风格Loss
-    Style_loss = style_loss(Phi_S, Phi_T)
     # 内容Loss
     Content_loss = content_loss(Phi_C, Phi_T)
+    # 风格Loss
+    Style_loss = style_loss(Phi_S, Phi_T)
+    # 总Loss
+    Loss = Content_loss * content_weight + Style_loss * style_weight
 
     # 定义当前训练轮数变量
     global_step = tf.Variable(0, trainable=False)
@@ -90,6 +90,7 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
     # 优化器：Adam优化器，损失最小化
     Opt = tf.train.AdamOptimizer(learning_rate).minimize(Loss, global_step=global_step)
 
+    # 读取训练数据
     content_batch = get_content_tfrecord(batch_size, os.path.join(path_data, dataset_name), IMG_H)
 
     # 实例化saver对象，便于之后保存模型
@@ -108,6 +109,8 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
             print('Restore Model Successfully')
+        else:
+            print('No Checkpoint Found')
 
         # 开启多线程
         coord = tf.train.Coordinator()
@@ -144,11 +147,11 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
                       (step, loss, CONTENT_LOSS, STYLE_LOSS))
                 # 展示训练效果：打印3张图片，内容图+风格图+风格迁移图
                 Image.fromarray(np.uint8(save_img)).save(
-                    "save_imgs/" + str(itr) + "_" + str(np.argmax(y_labels[0, :])) + ".jpg")
+                    "save_imgs/" + str(step) + "_" + str(np.argmax(y_labels[0, :])) + ".jpg")
 
             time_step_stop = time.time()
             # 存储模型
-            a = 5
+            a = 500
             if itr % a == 0:
                 saver.save(sess, model_path + "model", global_step=global_step)
                 print('Iteration: %d, Save Model Successfully, single step time = %.2fs, total time = %.2fs' % (
