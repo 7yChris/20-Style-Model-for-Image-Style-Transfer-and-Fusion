@@ -34,37 +34,39 @@ y...：风格标签的one-hot编码（tensor)
 alpha...：不同风格的权重（并保证alpha之和为1）
 return：风格融合后的图片
 """
-def forward(inputs, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
+
+
+def forward(inputs, weight):
     # 预处理'BGR'->'RGB',同时减去vgg_mean，以契合"vgg"模型。
     inputs = tf.reverse(inputs, [-1]) - np.array([103.939, 116.779, 123.68])
 
     # 3层卷积 ,每次卷积后均 +条件归一化并使用rule激活函数，也就是三次 downsample 操作
     inputs = conv("conv1", inputs, 9, 3, 32, 1)  # 卷积
-    inputs = conditional_normalization(inputs, "cin1", y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)  # 条件归一化
+    inputs = conditional_normalization(inputs, "cin1", weight)  # 条件归一化
     inputs = tf.nn.relu(inputs)  # relu
 
     inputs = conv("conv2", inputs, 3, 32, 64, 2)
-    inputs = conditional_normalization(inputs, "cin2", y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = conditional_normalization(inputs, "cin2", weight)
     inputs = tf.nn.relu(inputs)
 
     inputs = conv("conv3", inputs, 3, 64, 128, 2)
-    inputs = conditional_normalization(inputs, "cin3", y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = conditional_normalization(inputs, "cin3", weight)
     inputs = tf.nn.relu(inputs)
 
     # 5层resBlock
-    inputs = ResBlock("res1", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
-    inputs = ResBlock("res2", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
-    inputs = ResBlock("res3", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
-    inputs = ResBlock("res4", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
-    inputs = ResBlock("res5", inputs, 3, 128, 128, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = res_block("res1", inputs, 3, 128, 128, weight)
+    inputs = res_block("res2", inputs, 3, 128, 128, weight)
+    inputs = res_block("res3", inputs, 3, 128, 128, weight)
+    inputs = res_block("res4", inputs, 3, 128, 128, weight)
+    inputs = res_block("res5", inputs, 3, 128, 128, weight)
 
     # 2层upsampling
-    inputs = upsampling("up1", inputs, 128, 64, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
-    inputs = upsampling("up2", inputs, 64, 32, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = upsampling("up1", inputs, 128, 64, weight)
+    inputs = upsampling("up2", inputs, 64, 32, weight)
 
     # 最后一层卷积将channel限制在3
     inputs = conv("last", inputs, 9, 32, 3, 1)
-    inputs = conditional_normalization(inputs, "cinout", y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = conditional_normalization(inputs, "cinout", weight)
     # 并使用255* sigmoid函数保证结果在 (  0,255 ) 内
     inputs = tf.nn.sigmoid(inputs) * 255
 
@@ -81,6 +83,8 @@ nums_out：本层核的个数
 
 return：tensor
 """
+
+
 def conv(name, inputs, k_size, nums_in, nums_out, strides):
     # 使用正态分布初始化核
     kernel = tf.get_variable(name + "W", [k_size, k_size, nums_in, nums_out],
@@ -109,40 +113,24 @@ def conv(name, inputs, k_size, nums_in, nums_out, strides):
 
 return: the normalized, scaled, offset tensor.
 """
-def conditional_normalization(x, scope_bn, y1=None, y2=None, y3=None, y4=None, alpha1=1, alpha2=0, alpha3=0,
-                              istrain=True):
-    # 训练过程中,仅y1有效
-    if istrain:
-        # 初始化beta、gamma
-        # beta、gamma在每一层都是 ("风格图片数","通道数") 的矩阵 
-        beta = tf.get_variable(name=scope_bn + 'beta', shape=[y1.shape[-1], x.shape[-1]],
-                               initializer=tf.constant_initializer([0.]), trainable=True)  # label_nums x C
-        gamma = tf.get_variable(name=scope_bn + 'gamma', shape=[y1.shape[-1], x.shape[-1]],
-                                initializer=tf.constant_initializer([1.]), trainable=True)  # label_nums x C
-        # one-hot直接点乘beta/gamma矩阵即得到对应的 beta/gamma
-        beta = tf.matmul(y1, beta)
-        gamma = tf.matmul(y1, gamma)
-    else:
-        # 测试时进行风格融合
-        # 对y2... alpha...有效，此时，alpha_i是风格图片i的权重，在本网络中最多可以实现四个风格图片的融合。
-        beta = tf.get_variable(name=scope_bn + 'beta', shape=[y1.shape[-1], x.shape[-1]],
-                               initializer=tf.constant_initializer([0.]), trainable=True)  # label_nums x C
-        gamma = tf.get_variable(name=scope_bn + 'gamma', shape=[y1.shape[-1], x.shape[-1]],
-                                initializer=tf.constant_initializer([1.]), trainable=True)  # label_nums x C
-        # one-hot直接点乘beta/gamma矩阵即得到对应的 beta/gamma
-        beta1 = tf.matmul(y1, beta)
-        gamma1 = tf.matmul(y1, gamma)
-        beta2 = tf.matmul(y2, beta)
-        gamma2 = tf.matmul(y2, gamma)
-        beta3 = tf.matmul(y3, beta)
-        gamma3 = tf.matmul(y3, gamma)
-        beta4 = tf.matmul(y4, beta)
-        gamma4 = tf.matmul(y4, gamma)
-        # 对beta和gamma进行仿射变换
-        beta = alpha1 * beta1 + alpha2 * beta2 + alpha3 * beta3 + (1.0 - alpha1 - alpha2 - alpha3) * beta4
-        gamma = alpha1 * gamma1 + alpha2 * gamma2 + alpha3 * gamma3 + (1.0 - alpha1 - alpha2 - alpha3) * gamma4
-    # 按照 beta、gamma做归一化
+
+
+def conditional_normalization(x, scope_bn, weight=None):
+    # 获取beta、gamma参数变量
+    beta_matrix = tf.get_variable(name=scope_bn + 'beta', shape=[weight.shape[-1], x.shape[-1]],
+                                  initializer=tf.constant_initializer([0.]), trainable=True)  # label_nums x C
+    gamma_matrix = tf.get_variable(name=scope_bn + 'gamma', shape=[weight.shape[-1], x.shape[-1]],
+                                   initializer=tf.constant_initializer([1.]), trainable=True)  # label_nums x C
+
+    # 根据输入权重获取instance normalization beta、gamma值
+    # 在train过程当中weight为one hot编码用于抽取当前训练风格beta、gamma
+    # 在test过程当中weight可以融合多个风格的参数，从而达到特征融合效果（具体可参考上述论文）
+    beta = tf.matmul(weight, beta_matrix)
+    gamma = tf.matmul(weight, gamma_matrix)
+
+    # 获取单个feature map上mean和variance用作instance normalization
     mean, var = tf.nn.moments(x, axes=[1, 2], keep_dims=True)
+    # 按照 beta、gamma做归一化
     x = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-10)
     return x
 
@@ -152,15 +140,16 @@ def conditional_normalization(x, scope_bn, y1=None, y2=None, y3=None, y4=None, a
 在Johnson 2016中使用deconverlution
 为了减少"棋盘格" 使用插值算法并卷积来生成图片。
 """
-def upsampling(name, inputs, nums_in, nums_out, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
+
+
+def upsampling(name, inputs, nums_in, nums_out, weight):
     # 插值算法 。
     inputs = tf.image.resize_nearest_neighbor(inputs, [tf.shape(inputs)[1] * 2, tf.shape(inputs)[2] * 2])
     # 卷积
     inputs = conv(name, inputs, 3, nums_in, nums_out, 1)
     # 条件归一化
-    input = conditional_normalization(inputs, "cin" + name, y1, y2, y3, y4, alpha1,
-                                      alpha2, alpha3, istrain)
-    return input
+    inputs = conditional_normalization(inputs, "cin" + name, weight)
+    return inputs
 
 
 """
@@ -175,17 +164,19 @@ nums_in = input.shape[3]
 nums_out
 
 """
-def ResBlock(name, inputs, k_size, nums_in, nums_out, y1, y2, y3, y4, alpha1, alpha2, alpha3, istrain):
+
+
+def res_block(name, inputs, k_size, nums_in, nums_out, weight):
     # 暂存输入
     temp = inputs * 1.0
     # 一层卷积
-    inputs = conditional_normalization(conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1), "cin1" + name, y1,
-                                       y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = conv("conv1_" + name, inputs, k_size, nums_in, nums_out, 1)
+    inputs = conditional_normalization(inputs, "cin1" + name, weight)
     # 激活函数relu
     inputs = tf.nn.relu(inputs)
     # 一层卷积
-    inputs = conditional_normalization(conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1), "cin2" + name, y1,
-                                       y2, y3, y4, alpha1, alpha2, alpha3, istrain)
+    inputs = conv("conv2_" + name, inputs, k_size, nums_in, nums_out, 1)
+    inputs = conditional_normalization(inputs, "cin2" + name, weight)
     # 返回输入和网络输出之和
     return inputs + temp
 
@@ -258,7 +249,9 @@ def vggnet(inputs, vgg_path):
 """
 以L2距离计算内容损失
 """
-def content_loss(phi_content, phi_target):
+
+
+def get_content_loss(phi_content, phi_target):
     return tf.nn.l2_loss(phi_content["conv2_2"] - phi_target["conv2_2"]) * 2 / tf.cast(tf.size(phi_content["conv2_2"]),
                                                                                        dtype=tf.float32)
 
@@ -273,7 +266,9 @@ phi_style
 phi_target: 一个tensor的字典，包含两个图经过vgg后的中间输出
 
 """
-def style_loss(phi_style, phi_target):
+
+
+def get_style_loss(phi_style, phi_target):
     # 声明一个字典
     layers = ["conv1_2", "conv2_2", "conv3_3", "conv4_3"]
     # 初始化loss
@@ -293,6 +288,8 @@ def style_loss(phi_style, phi_target):
 """
 计算gram矩阵(tensor)
 """
+
+
 def get_gram_matrix(layer):
     shape = tf.shape(layer)
     # 第一维是batch_size

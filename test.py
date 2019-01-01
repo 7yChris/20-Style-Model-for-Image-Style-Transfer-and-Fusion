@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 import os
-
+import random
 import tensorflow as tf  # 导入tensorflow模块
 import numpy as np  # 导入numpy模块
 from PIL import Image  # 导入PIL模块
@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser()  # 定义一个参数设置器
 parser.add_argument("--C_NUMS", type=int, default=20)  # 参数：图片数量，默认值为10
 parser.add_argument("--PATH_MODEL", type=str, default="./save_para/")  # 参数：模型存储路径
 parser.add_argument("--PATH_RESULTS", type=str, default="./results/")  # 参数：结果存储路径
-parser.add_argument("--PATH_IMG", type=str, default="./imgs/ruanwei.jpeg")  # 参数：选择测试图像
+parser.add_argument("--PATH_IMG", type=str, default="./imgs/shanghai1.jpg")  # 参数：选择测试图像
 parser.add_argument("--PATH_STYLE", type=str, default="./style_imgs/")
 parser.add_argument("--LABEL_1", type=int, default=2)  # 参数：风格1
 parser.add_argument("--LABEL_2", type=int, default=8)  # 参数：风格2
@@ -23,126 +23,190 @@ parser.add_argument("--LABEL_4", type=int, default=19)  # 参数：风格4
 parser.add_argument("--ALPHA1", type=float, default=0.25)  # 参数：Alpha1，风格权重，默认为0.25
 parser.add_argument("--ALPHA2", type=float, default=0.25)  # 参数：Alpha2，风格权重，默认为0.25
 parser.add_argument("--ALPHA3", type=float, default=0.25)  # 参数：Alpha3，风格权重，默认为0.25
+
 args = parser.parse_args()  # 定义参数集合args
 
 
-def Init(c_nums=args.C_NUMS, model_path=args.PATH_MODEL):  # 初始化图片生成模型参数
-    content = tf.placeholder(tf.float32, [1, None, None, 3])  # 图片输入定义
-    y1 = tf.placeholder(tf.float32, [1, c_nums])  # 初始化风格1选择范围
-    y2 = tf.placeholder(tf.float32, [1, c_nums])  # 初始化风格2选择范围
-    y3 = tf.placeholder(tf.float32, [1, c_nums])
-    y4 = tf.placeholder(tf.float32, [1, c_nums])
-    alpha1 = tf.placeholder(tf.float32)
-    alpha2 = tf.placeholder(tf.float32)  # 风格与内容的权重比
-    alpha3 = tf.placeholder(tf.float32)
-    target = forward(content, y1, y2, y3, y4, alpha1, alpha2, alpha3, False)  # 定义将要生成的图片
-    sess = tf.Session()  # 定义一个sess
-    sess.run(tf.global_variables_initializer())  # 模型初始化
-    saver = tf.train.Saver()  # 模型存储器定义
-    ckpt = tf.train.get_checkpoint_state(model_path)  # 从模型存储路径中获取模型
-    if ckpt and ckpt.model_checkpoint_path:  # 从检查点中恢复模型
-        saver.restore(sess, ckpt.model_checkpoint_path)  # 从检查点的路径名中分离出训练轮数
-        # global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]  # 获取训练步数
-    return target, sess, content, y1, y2, y3, y4, alpha1, alpha2, alpha3  # 返回目标图片，模型session，输入图片，风格选择，风格权重
+class Stylizer(object):
+
+    def __init__(self, stylizer_arg):
+        self.stylizer_arg = stylizer_arg
+        self.content = tf.placeholder(tf.float32, [1, None, None, 3])  # 图片输入定义
+        self.weight = tf.placeholder(tf.float32, [1, stylizer_arg.C_NUMS])  # 模型风格参数权重向量
+        self.target = forward(self.content, self.weight)  # 定义将要生成的图片
+        self.sess = tf.Session()  # 定义一个sess
+        self.sess.run(tf.global_variables_initializer())  # 模型初始化
+        self.img = None
+        self.img_path = None
+        self.label_list = None
+        self.input_weight = None
+        self.global_step = 0
+        saver = tf.train.Saver()  # 模型存储器定义
+        ckpt = tf.train.get_checkpoint_state(stylizer_arg.PATH_MODEL)  # 从模型存储路径中获取模型
+        if ckpt and ckpt.model_checkpoint_path:  # 从检查点中恢复模型
+            # 从检查点的路径名中分离出训练轮数
+            saver.restore(self.sess, ckpt.model_checkpoint_path)
+            self.global_step = ckpt.model_checkpoint_path.split(
+                '/')[-1].split('-')[-1]  # 获取训练步数
+
+    def __del__(self):
+        self.sess.close()
+
+    def set_image(self, img_path):
+        img = Image.open(img_path)
+
+        while img.width * img.height > 500000:
+            img = img.resize((int(img.width / 1.5), int(img.height / 1.5)))
+
+        self.img = np.array(img)
+
+        self.img_path = img_path
+
+        return self.img
+
+    def set_style(self, *label_list):
+        self.label_list = label_list
+
+    def set_weight(self, weight_dict):
+        self.label_list = []
+        self.input_weight = np.zeros([1, self.stylizer_arg.C_NUMS])
+        for k, v in weight_dict.items():
+            self.input_weight[0, k] = v
+
+    def stylize(self, alpha_list=None):
+        # print(self.sess.run( tf.global_variables() ))
+        # 开始预测！
+        # 生成指定风格图片
+        if alpha_list is not None:
+            weight_dict = dict(zip(self.label_list, alpha_list))
+            self.set_weight(weight_dict)
+
+        img = self.sess.run(self.target,
+                            feed_dict={self.content: self.img[np.newaxis, :, :, :], self.weight: self.input_weight})
+
+        return img
+
+    def save_25result(self):
+        size = 5
+        i = 0
+        # 按行生成
+        while i < size:
+            # 1、2风格权重之和
+            x_sum = 100 - i * 25.0
+            # 3、4风格权重之和
+            y_sum = i * 25
+            # 1、2风格之和进行五等分，计算权重step值
+            x_step = x_sum / 4.0
+            # 3、4风格之和进行五等分，计算权重step值
+            y_step = y_sum / 4.0
+
+            # 按列生成
+            j = 0
+            while j < size:
+                # 计算1、2风格的权重
+                ap1 = x_sum - j * x_step
+                ap2 = j * x_step
+                # 计算3风格权重
+                ap3 = y_sum - j * y_step
+                # 归一化后存到args中
+                alphas = (float('%.2f' % (ap1 / 100.0)),
+                          float('%.2f' % (ap2 / 100.0)), float('%.2f' % (ap3 / 100.0)))
+                # 返回融合后图像
+                # img_return = stylize(args.PATH_IMG, args.PATH_RESULTS, args.LABEL_1, args.LABEL_2, args.LABEL_3,
+                #                      args.LABEL_4, args.ALPHA1, args.ALPHA2, args.ALPHA3, target, sess, content, y1, y2, y3,
+                #                      y4, alpha1, alpha2, alpha3)
+                img_return = self.stylize(alphas)
+                # array转IMG
+                img_return = Image.fromarray(np.uint8(img_return[0, :, :, :]))
+                # 将5个图像按行拼接
+                if j == 0:
+                    width, height = img_return.size
+                    img_5 = Image.new(img_return.mode, (width * 5, height))
+                img_5.paste(img_return, (width * j, 0, width * (j + 1), height))
+                j = j + 1
+
+            # 将多个行拼接图像，拼接成5*5矩阵
+            if i == 0:
+                img_25 = Image.new(img_return.mode, (width * 5, height * 5))
+            img_25.paste(img_5, (0, height * i, width * 5, height * (i + 1)))
+
+            i = i + 1
+
+        # 将5*5矩阵图像的4个角加上4个风格图像，以作对比
+        img_25_4 = Image.new(img_return.mode, (width * 7, height * 5))
+        img_25_4 = ImageOps.invert(img_25_4)
+        img_25_4.paste(
+            center_crop_img(Image.open(
+                self.stylizer_arg.PATH_STYLE + str(self.label_list[0] + 1) + '.png')).resize((width, height)),
+            (0, 0, width, height))
+        img_25_4.paste(
+            center_crop_img(Image.open(
+                self.stylizer_arg.PATH_STYLE + str(self.label_list[1] + 1) + '.png')).resize((width, height)),
+            (width * 6, 0, width * 7, height))
+        img_25_4.paste(
+            center_crop_img(Image.open(
+                self.stylizer_arg.PATH_STYLE + str(self.label_list[2] + 1) + '.png')).resize((width, height)),
+            (0, height * 4, width, height * 5))
+        img_25_4.paste(
+            center_crop_img(Image.open(
+                self.stylizer_arg.PATH_STYLE + str(self.label_list[3] + 1) + '.png')).resize((width, height)),
+            (width * 6, height * 4, width * 7, height * 5))
+        img_25_4.paste(img_25, [width, 0, width * 6, height * 5])
+
+        # 存储5*5图像矩阵
+        img_25.save(self.stylizer_arg.PATH_RESULTS + self.img_path.split('/')
+        [-1].split('.')[0] + str(self.label_list) + '_result_25' + '.jpg')
+        # 存储5*5+4风格图像矩阵
+
+        print(self.stylizer_arg.PATH_RESULTS + self.img_path.split('/')
+        [-1].split('.')[0] + str(self.label_list) + '_result_25_4' + '.jpg' + " saved!")
 
 
-def stylize(img_path, result_path, label1, label2, label3, label4, alpha1, alpha2, alpha3, target, sess, content_ph,
-            y1_ph, y2_ph, y3_ph, y4_ph, alpha1_ph, alpha2_ph, alpha3_ph):  # 风格迁移
-    print('%.2f' % alpha1, '%.2f' % alpha2, '%.2f' % alpha3, '%.2f' % (1.0 - alpha1 - alpha2 - alpha3))
-    img = np.array(Image.open(img_path))  # 将输入图片序列化
-    Y1 = np.zeros([1, args.C_NUMS])  # 数组置0
-    Y2 = np.zeros([1, args.C_NUMS])  # 数组置0
-    Y3 = np.zeros([1, args.C_NUMS])
-    Y4 = np.zeros([1, args.C_NUMS])
-    Y1[0, label1] = 1  # 第label1个风格置1
-    Y2[0, label2] = 1  # 第label2个风格置1
-    Y3[0, label3] = 1
-    Y4[0, label4] = 1
-    img = sess.run(target, feed_dict={content_ph: img[np.newaxis, :, :, :], y1_ph: Y1, y2_ph: Y2, y3_ph: Y3, y4_ph: Y4,
-                                      alpha1_ph: alpha1, alpha2_ph: alpha2, alpha3_ph: alpha3})  # 生成图片
-    Image.fromarray(np.uint8(img[0, :, :, :])).save(
-        result_path + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(label1) + '_' + str(label2) + '_' + str(
-            label3) + '_' + str(label4) + '_' + '%.2f' % (alpha1) + '_' + '%.2f' % (
-            alpha2) + '_' + '%.2f' % (alpha3) + '_' + '%.2f' % (1 - alpha1 - alpha2 - alpha3) + '.jpg')  # 保存风格迁移后的图片
-    return img
+def diao():
+    stylizer0 = Stylizer(args)
+    stylizer0.set_image(args.PATH_IMG)
+    stylizer0.set_style(args.LABEL_1, args.LABEL_2, args.LABEL_3, args.LABEL_4)
+    stylizer0.save_25result()
+    del stylizer0
+    tf.reset_default_graph()
 
 
-# 测试程序
-def test():
-    # 初始化变量
-    target, sess, content, y1, y2, y3, y4, alpha1, alpha2, alpha3 = Init(args.C_NUMS, args.PATH_MODEL)  # 初始化生成模型
+# def diao():
+#     stylizer0 = Stylizer(args)
+#     stylizer0.setImage(s[4])
+#     stylizer0.setstyle(int(s[0]), int(s[1]), int(s[2]), int(s[3]))
+#     stylizer0.save_25result()
+#     del stylizer0
+#     tf.reset_default_graph()
 
-    # 生成5*5的权重参数矩阵，并依次将权重传入batch_normalization，进行风格融合
-    size = 5
-    i = 0
-    # 按行生成
-    while i < size:
-        # 1、2风格权重之和
-        x_sum = 100 - i * 25.0
-        # 3、4风格权重之和
-        y_sum = i * 25
-        # 1、2风格之和进行五等分，计算权重step值
-        x_step = x_sum / 4.0
-        # 3、4风格之和进行五等分，计算权重step值
-        y_step = y_sum / 4.0
 
-        # 按列生成
-        j = 0
-        while j < size:
-            # 计算1、2风格的权重
-            ap1 = x_sum - j * x_step
-            ap2 = j * x_step
-            # 计算3风格权重
-            ap3 = y_sum - j * y_step
-            # 归一化后存到args中
-            args.ALPHA1 = float('%.2f' % (ap1 / 100.0))
-            args.ALPHA2 = float('%.2f' % (ap2 / 100.0))
-            args.ALPHA3 = float('%.2f' % (ap3 / 100.0))
+def walk():
+    stylizer0 = Stylizer(args)
+    file_dir = r"./imgs/"
+    for root, dirs, files in os.walk(file_dir):
+        for image_file in files:
+            path_dic = os.path.join(file_dir, image_file)
+            stylizer0.set_image(path_dic)
+            for i in range(20):
+                stylizer0.set_style(i, 0, 0, 0)
+                img = stylizer0.stylize((1.0, 0.0, 0.0, 0.0))
+                img = Image.fromarray(np.uint8(img[0, :, :, :]))
+                # img.save(args.PATH_RESULTS + image_file + "( " + str(i) + " - style).jpg")
+                img.save("../static/results/data" + str(random.uniform(1, 10)) + ".jpg")
+                print(image_file + "( " + str(i) + " - style).jpg saved")
 
-            # 返回融合后图像
-            img_return = stylize(args.PATH_IMG, args.PATH_RESULTS, args.LABEL_1, args.LABEL_2, args.LABEL_3,
-                                 args.LABEL_4, args.ALPHA1, args.ALPHA2, args.ALPHA3, target, sess, content, y1, y2, y3,
-                                 y4, alpha1, alpha2, alpha3)
-            # array转IMG
-            img_return = Image.fromarray(np.uint8(img_return[0, :, :, :]))
 
-            # 将5个图像按行拼接
-            if j == 0:
-                width, height = img_return.size
-                img_5 = Image.new(img_return.mode, (width * 5, height))
-            img_5.paste(img_return, (width * j, 0, width * (j + 1), height))
-            j = j + 1
+def test3():
+    stylizer0 = Stylizer(args)
 
-        # 将多个行拼接图像，拼接成5*5矩阵
-        if i == 0:
-            img_25 = Image.new(img_return.mode, (width * 5, height * 5))
-        img_25.paste(img_5, (0, height * i, width * 5, height * (i + 1)))
+    file_dir = r"C:\Users\YRP\Desktop\tf\imgs"
+    stylizer0.set_style(0, 1, 4, 5)
 
-        i = i + 1
-
-    # 将5*5矩阵图像的4个角加上4个风格图像，以作对比
-    img_25_4 = Image.new(img_return.mode, (width * 7, height * 5))
-    img_25_4 = ImageOps.invert(img_25_4)
-    img_25_4.paste(
-        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_1 + 1) + '.png')).resize((width, height)),
-        (0, 0, width, height))
-    img_25_4.paste(
-        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_2 + 1) + '.png')).resize((width, height)),
-        (width * 6, 0, width * 7, height))
-    img_25_4.paste(
-        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_3 + 1) + '.png')).resize((width, height)),
-        (0, height * 4, width, height * 5))
-    img_25_4.paste(
-        center_crop_img(Image.open(args.PATH_STYLE + str(args.LABEL_4 + 1) + '.png')).resize((width, height)),
-        (width * 6, height * 4, width * 7, height * 5))
-    img_25_4.paste(img_25, [width, 0, width * 6, height * 5])
-
-    # 存储5*5图像矩阵
-    img_25.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(args.LABEL_1) + '_' + str(
-        args.LABEL_2) + '_' + str(args.LABEL_3) + '_' + str(args.LABEL_4) + '_result_25' + '.jpg')
-    # 存储5*5+4风格图像矩阵
-    img_25_4.save(args.PATH_RESULTS + args.PATH_IMG.split('/')[-1].split('.')[0] + '_' + str(args.LABEL_1) + '_' + str(
-        args.LABEL_2) + '_' + str(args.LABEL_3) + '_' + str(args.LABEL_4) + '_result_25_4' + '.jpg')
+    for root, dirs, files in os.walk(file_dir):
+        for image_file in files:
+            path_dic = os.path.join(file_dir, image_file)
+            stylizer0.set_image(path_dic)
+            stylizer0.save_25result()
 
 
 def test2():
@@ -157,7 +221,7 @@ def test2():
         path = os.path.join(style_path, style_name)
         with Image.open(path) as img:
             img_resized = center_crop_img(img).resize((512, 512))
-            img_all.paste(img_resized, get_point(0, i + 1))
+            img_all.paste(img_resized, get_point(0, i + 1, 512))
     for content_n in range(y_len - 1):
         with Image.open(images[content_n]) as img:
             img_resized = center_crop_img(img).resize((512, 512))
@@ -182,9 +246,14 @@ def get_point(row_n, col_n, cap):
 
 # 主程序
 def main():
-    test()
+    diao()
 
 
 # 主程序入口
 if __name__ == '__main__':
-    main()
+    s = Stylizer(args)
+    s.set_weight({1: 1})
+    s.set_image('./MSCOCO/COCO_train2014_000000000009.jpg')
+    img = s.stylize()
+    img = Image.fromarray(np.uint8(img[0, :, :, :]))
+    img.show()

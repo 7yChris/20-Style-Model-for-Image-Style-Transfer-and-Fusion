@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 
-from forward import vggnet, forward, content_loss, style_loss
+from forward import vggnet, forward, get_content_loss, get_style_loss
 import tensorflow as tf
 
 from generateds import get_content_tfrecord
@@ -47,51 +47,40 @@ parser.add_argument("--steps", type=int, default=50000)
 args = parser.parse_args()
 
 
-def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.STYLE_H, STYLE_W=args.STYLE_W,
-             C_NUMS=args.C_NUMS, batch_size=args.BATCH_SIZE, learning_rate=args.LEARNING_RATE,
+def backward(img_h=args.IMG_H, img_w=args.IMG_W, img_c=args.IMG_C, style_h=args.STYLE_H, style_w=args.STYLE_W,
+             c_nums=args.C_NUMS, batch_size=args.BATCH_SIZE, learning_rate=args.LEARNING_RATE,
              content_weight=args.CONTENT_WEIGHT, style_weight=args.STYLE_WEIGHT, path_style=args.PATH_STYLE,
              model_path=args.PATH_MODEL, vgg_path=args.PATH_VGG16, path_data=args.PATH_DATA,
              dataset_name=args.DATASET_NAME):
-
     # 内容图像：batch为2，图像大小为256*256*3
-    content = tf.placeholder(tf.float32, [batch_size, IMG_H, IMG_W, IMG_C])
+    content = tf.placeholder(tf.float32, [batch_size, img_h, img_w, img_c])
     # 风格图像：batch为2，图像大小为512*512*3
-    style = tf.placeholder(tf.float32, [batch_size, STYLE_H, STYLE_W, IMG_C])
+    style = tf.placeholder(tf.float32, [batch_size, style_h, style_w, img_c])
     # 风格1：训练风格的标签
-    y = tf.placeholder(tf.float32, [1, C_NUMS])
-    # 风格2：0
-    y_1 = tf.zeros([1, C_NUMS])
-    # 风格3：0
-    y_2 = tf.zeros([1, C_NUMS])
-    # 风格4：0
-    y_3 = tf.zeros([1, C_NUMS])
-    # 初始化三个alpha
-    alpha1 = tf.constant([1.])
-    alpha2 = tf.constant([0.])
-    alpha3 = tf.constant([0.])
+    weight = tf.placeholder(tf.float32, [1, c_nums])
 
     # 图像生成网络：前向传播
-    target = forward(content, y, y_1, y_2, y_3, alpha1, alpha2, alpha3, True)
+    target = forward(content, weight)
     # 生成图像、内容图像、风格图像特征提取
     Phi_T = vggnet(target, vgg_path)
     Phi_C = vggnet(content, vgg_path)
     Phi_S = vggnet(style, vgg_path)
     # Loss计算
     # 内容Loss
-    Content_loss = content_loss(Phi_C, Phi_T)
+    content_loss = get_content_loss(Phi_C, Phi_T)
     # 风格Loss
-    Style_loss = style_loss(Phi_S, Phi_T)
+    style_loss = get_style_loss(Phi_S, Phi_T)
     # 总Loss
-    Loss = Content_loss * content_weight + Style_loss * style_weight
+    loss = content_loss * content_weight + style_loss * style_weight
 
     # 定义当前训练轮数变量
     global_step = tf.Variable(0, trainable=False)
 
     # 优化器：Adam优化器，损失最小化
-    Opt = tf.train.AdamOptimizer(learning_rate).minimize(Loss, global_step=global_step)
+    opt = tf.train.AdamOptimizer(learning_rate).minimize(loss, global_step=global_step)
 
     # 读取训练数据
-    content_batch = get_content_tfrecord(batch_size, os.path.join(path_data, dataset_name), IMG_H)
+    content_batch = get_content_tfrecord(batch_size, os.path.join(path_data, dataset_name), img_h)
 
     # 实例化saver对象，便于之后保存模型
     saver = tf.train.Saver()
@@ -124,27 +113,28 @@ def backward(IMG_H=args.IMG_H, IMG_W=args.IMG_W, IMG_C=args.IMG_C, STYLE_H=args.
             # 随机读取batch_size张内容图片，存储在四维矩阵中（batch_size*h*w*c）
             # batch_content = random_batch(path_content, batch_size, [IMG_H, IMG_W, IMG_C])
             batch_content = sess.run(content_batch)
-            batch_content = np.reshape(batch_content, [batch_size, IMG_W, IMG_H, IMG_C])
+            batch_content = np.reshape(batch_content, [batch_size, img_w, img_h, img_c])
             # 随机选择1个风格图片，并返回风格图片存储矩阵（batch_size*h*w*c，每个h*w*c都相同），y_labels为风格标签
-            batch_style, y_labels = random_select_style(path_style, batch_size, [STYLE_H, STYLE_W, IMG_C], C_NUMS)
+            batch_style, y_labels = random_select_style(path_style, batch_size, [style_h, style_w, img_c], c_nums)
 
             # 喂数据，开始训练
-            sess.run(Opt, feed_dict={content: batch_content, style: batch_style, y: y_labels})
+            sess.run(opt, feed_dict={content: batch_content, style: batch_style, weight: y_labels})
             step = sess.run(global_step)
 
             # 打印相关信息
             if itr % 100 == 0:
                 # 为之后打印信息进行相关计算
-                [loss, Target, CONTENT_LOSS, STYLE_LOSS] = sess.run([Loss, target, Content_loss, Style_loss],
-                                                                    feed_dict={content: batch_content,
-                                                                               style: batch_style, y: y_labels})
+                [loss, target, content_loss_res, style_loss_res] = sess.run([loss, target, content_loss, style_loss],
+                                                                            feed_dict={content: batch_content,
+                                                                                       style: batch_style,
+                                                                                       weight: y_labels})
                 # 连接3张图片（内容图片、风格图片、生成图片）
                 save_img = np.concatenate((batch_content[0, :, :, :],
-                                           misc.imresize(batch_style[0, :, :, :], [IMG_H, IMG_W]),
-                                           Target[0, :, :, :]), axis=1)
+                                           misc.imresize(batch_style[0, :, :, :], [img_h, img_w]),
+                                           target[0, :, :, :]), axis=1)
                 # 打印轮数、总loss、内容loss、风格loss
                 print("Iteration: %d, Loss: %e, Content_loss: %e, Style_loss: %e" %
-                      (step, loss, CONTENT_LOSS, STYLE_LOSS))
+                      (step, loss, content_loss_res, style_loss_res))
                 # 展示训练效果：打印3张图片，内容图+风格图+风格迁移图
                 Image.fromarray(np.uint8(save_img)).save(
                     "save_imgs/" + str(step) + "_" + str(np.argmax(y_labels[0, :])) + ".jpg")
